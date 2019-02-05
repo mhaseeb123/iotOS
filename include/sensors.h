@@ -44,6 +44,7 @@
 #define ERR_TIMER_CREATION_FAILED       -1003
 #define ERR_THREAD_CREATION_FAILED      -1004
 #define ERR_INVLD_ARGS                  -1005
+#define ERR_INVLD_IP                    -1006
 
 /* Defined by the Gateway */
 #define ERR_SENSOR_NOT_REGISTERED        4
@@ -53,15 +54,20 @@
 #define AWAY                             1 << 1
 #define EXIT                             1 << 2
 
-#define TYPE                             1
-
-#define TEMP_INTERVAL                    1000 // milliseconds
-
-
 /* Typedefs */
 typedef int STATUS;
 typedef unsigned int MODE;
 typedef struct itimerval TIMER;
 typedef std::mutex LOCK;
+
+/* Function Prototypes */
+STATUS SetTimer(int msecs);
+void *report_state(void *arg);
+int Random_Number();
+void change_mode(int inmode);
+std::string getIPAddress();
+long long query_state(int device_id);
+void Update();
+void *Server_Entry(void *arg);
 
 #endif /* SENSORS_H_ */

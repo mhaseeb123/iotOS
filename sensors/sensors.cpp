@@ -21,18 +21,21 @@
  * SOFTWARE.
  */
 
-#include "main.h"
+#include "sensors.h"
 using namespace std;
 
 /* Global Variables */
 string gateway_ip;
 int gateway_port;
+
+string sensor_ip;
+int sensor_port = 6060;
+
 MODE mode = HOME;
 bool motion = false;
 float temp = 0.5;
 float modeoffset = 0;
 
-TIMER temp_timer; /* Timer for updating temperature */
 TIMER motion_timer; /* Timer for motion updates */
 
 int msensor = ERR_SENSOR_NOT_REGISTERED;
@@ -40,6 +43,42 @@ int tsensor = ERR_SENSOR_NOT_REGISTERED;
 
 LOCK offset_lock;
 LOCK motion_lock;
+
+// This functions from: https://www.geeksforgeeks.org/c-program-display-hostname-ip-address/
+string getIPAddress()
+{
+    char hostbuffer[256];
+    char *IPbuffer; 
+    struct hostent *host_entry; 
+    int hostname; 
+  
+    // To retrieve hostname 
+    hostname = gethostname(hostbuffer, sizeof(hostbuffer)); 
+
+	if (hostname == -1) 
+    { 
+        perror("gethostname"); 
+        exit(1); 
+    }  
+
+    // To retrieve host information 
+    host_entry = gethostbyname(hostbuffer);
+
+    if (host_entry == NULL) 
+    { 
+        perror("gethostbyname"); 
+        exit(1); 
+    }
+	
+    // To convert an Internet network 
+    // address into ASCII string 
+    IPbuffer = inet_ntoa(*((struct in_addr*) 
+                           host_entry->h_addr_list[0]));
+	
+    string IP(IPbuffer);
+    
+    return IP;
+} 
 
 void change_mode(int inmode)
 {
@@ -53,10 +92,9 @@ void change_mode(int inmode)
             break;
 
         case AWAY:
-            /* Lock the update mutex */
             mode = AWAY;
             modeoffset = 10;
-            /* Lock the update mutex */
+			(void)SetTimer(10000);
             break;
 
         case EXIT:
@@ -76,13 +114,29 @@ void change_mode(int inmode)
  -1.0 and 1.0
  *
  * @params: none
- * @returns: random number [0.0, 2.0]
+ * @returns: random number
  */
 int Random_Number()
 {
     return rand();
 }
 
+STATUS SetTimer(int msecs)
+{
+	STATUS status = SUCCESS;
+
+    motion_timer.it_value.tv_sec = msecs / 1000;
+    motion_timer.it_value.tv_usec = (msecs * 1000) % 1000000;
+    motion_timer.it_interval = motion_timer.it_value;
+
+    if (setitimer(ITIMER_REAL, &motion_timer, NULL) == -1)
+    {
+        cout << "Timer Failed !\n";
+        status = ERR_TIMER_CREATION_FAILED;
+    }
+
+    return status;	
+}
 /*
  * FUNCTION: report_state
  * DESCRIPTION: Entry function for Server Task
@@ -93,21 +147,38 @@ int Random_Number()
 void *report_state(void *arg)
 {
     // Creating a client that connects to the localhost on port 8080
+    cout << "\nConnecting to Gateway...\n";
+
     rpc::client client(gateway_ip, gateway_port);
+    rpc::client::connection_state state = (rpc::client::connection_state) 1;
 
-    msensor = client.call("registerf", "sensor", "temp").as<int>();
+    /* Wait until connected */
+    if (client.get_connection_state() != state)
+    {
+        cout << "Gateway Not Available.." << endl;
+		return NULL;
+    }
 
+    cout << "CONNECTED \n";
+
+    cout << "Registering Temperature Sensor...\n";
+    msensor = client.call("registerf", "sensor", "temp", sensor_ip, sensor_port).as<int>();
     if (msensor == ERR_SENSOR_NOT_REGISTERED)
     {
         return NULL;
     }
 
-    tsensor = client.call("registerf", "sensor", "motion").as<int>();
+    cout << "SUCCESS \n";
+
+    cout << "Registering Motion Sensor...\n";
+    tsensor = client.call("registerf", "sensor", "motion", sensor_ip, sensor_port).as<int>();
 
     if (tsensor == ERR_SENSOR_NOT_REGISTERED)
     {
         return NULL;
     }
+
+    cout << "SUCCESS \n";
 
     while (true)
     {
@@ -132,7 +203,7 @@ long long query_state(int device_id)
     if (device_id == tsensor)
     {
         offset_lock.lock();
-        res = (res / (float) (RAND_MAX / 2)) + modeoffset;
+        res = (res / (float)(RAND_MAX / 3)) + modeoffset;
         offset_lock.unlock();
     }
     else if (device_id == msensor)
@@ -167,18 +238,18 @@ void Update()
  */
 void *Server_Entry(void *arg)
 {
-    while (tsensor == ERR_SENSOR_NOT_REGISTERED || msensor == ERR_SENSOR_NOT_REGISTERED)
-    {
-        sleep(1);
-    }
-
     // Creating a server that listens on port 8080
-    rpc::server srv(6060);
+    rpc::server srv(sensor_port);
 
     cout << "Registering calls \n";
 
     srv.bind("query_state", &query_state);
     srv.bind("change_mode", &change_mode);
+    
+	while (tsensor == ERR_SENSOR_NOT_REGISTERED || msensor == ERR_SENSOR_NOT_REGISTERED)
+    {
+        sleep(1);
+    }
 
     // Run the server loop.
     srv.run();
@@ -195,9 +266,6 @@ STATUS main(int argc, char **argv)
 
     pthread_t thread1;
     pthread_t thread2;
-
-    /* Lock the msensor mutex */
-    motion_lock.lock();
 
     /* Check if number of tosses passed as parameter */
     if (argc < 3)
@@ -216,11 +284,19 @@ STATUS main(int argc, char **argv)
 
     if (status == SUCCESS)
     {
+        /* Get your IP */
+        sensor_ip = getIPAddress();
+
+        if (strcmp(sensor_ip.c_str(), "") == 0)
+        {
+            status = ERR_INVLD_IP;
+        }
+    }
+
+    if (status == SUCCESS)
+    {
         /* Provide a random seed */
         srand((int) (time(0) * 23) % (1 + 5) + (10 + 1) * 29 - time(0) + (int) time(0) % (5 + 1) * time(0));
-
-        /* Create Timers here */
-        TIMER temp_timer; /* Timer for updating temperature */
 
         cout << "Main Task: Creating Timers\n\n";
 
@@ -232,52 +308,48 @@ STATUS main(int argc, char **argv)
         }
     }
 
+    /* Create Tasks (pthreads) */
     if (status == SUCCESS)
     {
-        temp_timer.it_value.tv_sec = TEMP_INTERVAL / 1000;
-        temp_timer.it_value.tv_usec = (TEMP_INTERVAL * 1000) % 1000000;
-        temp_timer.it_interval = temp_timer.it_value;
-
-        if (setitimer(ITIMER_REAL, &temp_timer, NULL) == -1)
+        printf("Main Task: Creating TSensor Task\n");
+        status = pthread_create(&thread1, NULL, &Server_Entry, NULL);
+		if (status != SUCCESS)
         {
-            cout << "Timer Failed !\n";
-            status = ERR_TIMER_CREATION_FAILED;
+            printf("Error: TSensor Task Create failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
         }
     }
 
+    /* Wait for calls to be registered */
+    sleep(0.1);
+
     /* Create Tasks (pthreads) */
     if (status == SUCCESS)
     {
-        printf("Main Task: Creating MSensor Client Task\n");
+        printf("Main Task: Creating MSensor Task\n");
         status = pthread_create(&thread2, NULL, &report_state, NULL);
-    }
-    else
-    {
-        printf("Error: MSensor Client Task Create failed\nABORT!!\n\n");
-        status = ERR_THREAD_CREATION_FAILED;
-    }
-
-    /* Create Tasks (pthreads) */
-    if (status == SUCCESS)
-    {
-        printf("Main Task: Creating Server Task\n");
-        status = pthread_create(&thread1, NULL, &Server_Entry, NULL);
-    }
-    else
-    {
-        printf("Error: Server Task Create failed\nABORT!!\n\n");
-        status = ERR_THREAD_CREATION_FAILED;
+		if (status != SUCCESS)
+        {
+            printf("Error: MSensor Task Create failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
+        }
     }
 
     if (status == SUCCESS)
     {
-        /* Sync : Wait for the threads to complete before exiting */
+		if (status == SUCCESS)
+        {
+            status = SetTimer(1000);
+        }
+        /* If Gateway Not available, then exit */
         pthread_join(thread2, &result_ptr);
-        pthread_join(thread1, &result_ptr);
+		pthread_cancel(thread1);
+        
+		//pthread_join(thread1, &result_ptr);
 
         /* All set - Exit now */
         pthread_exit(NULL);
     }
-
+	
     return status;
 }
