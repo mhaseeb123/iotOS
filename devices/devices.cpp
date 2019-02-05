@@ -163,64 +163,68 @@ STATUS main(int argc, char **argv)
         }
     }
 
-    // Creating a server that listens on port
-    rpc::server srv(device_port);
-
-    cout << "Registering calls \n";
-
-    srv.bind("query_state", &query_state);
-    srv.bind("change_state", &change_state);
-
-    // Run the server loop with 2 threads
-    srv.async_run(2);
-
-    cout << "\nConnecting to Gateway...\n";
-
-    // Connect to the gateway
-    rpc::client client(gateway_ip, gateway_port);
-    rpc::client::connection_state state = (rpc::client::connection_state) 1;
-
-    /* Wait until connected */
-    if (client.get_connection_state() != state)
+	if (status == SUCCESS)
     {
-        cout << "Gateway Not Available.." << endl;
-        return 0;
-    }
-
-    cout << "CONNECTED \n\n";
-    cout << "Registering Smart Bulb...\n";
-
-    msensor = client.call("registerf", "device", "bulb", sensor_ip, sensor_port).as<int>();
-
-    if (msensor == ERR_SENSOR_NOT_REGISTERED)
-    {
-        cout << "Smart Bulb Registration Failed..\n";
-        status = ERR_DEV_NOT_REGD;
-    }
-
-    if (status == SUCCESS)
-    {
-        cout << "SUCCESS \n";
+        // Creating a server that listens on port
+        rpc::server srv(devices_port);
+           
+        cout << "Registering calls \n";
         
-        cout << "Registering Smart Outlet...\n";
-
-        tsensor = client.call("registerf", "device", "outlet", sensor_ip, sensor_port).as<int>();
-
-        if (tsensor == ERR_SENSOR_NOT_REGISTERED)
+        srv.bind("query_state", &query_state);
+        srv.bind("change_state", &change_state);
+        
+        // Run the server loop with 2 threads
+        srv.async_run(2);
+        
+        cout << "\nConnecting to Gateway...\n";
+        
+        // Connect to the gateway
+        rpc::client client(gateway_ip, gateway_port);
+        rpc::client::connection_state state = (rpc::client::connection_state) 1;
+        
+        /* Wait until connected */
+        if (client.get_connection_state() != state)
+        {
+            cout << "Gateway Not Available.." << endl;
+            return 0;
+        }
+        
+        cout << "CONNECTED \n\n";
+        cout << "Registering Smart Bulb...\n";
+        
+        bulbid = client.call("registerf", "device", "bulb", devices_ip, devices_port).as<int>();
+        
+        if (bulbid == ERR_SENSOR_NOT_REGISTERED)
         {
             cout << "Smart Bulb Registration Failed..\n";
             status = ERR_DEV_NOT_REGD;
         }
-    }
-
-    if (status == SUCCESS)
-    {
-        cout << "SUCCESS \n";
-
-        /* Loop forever */
-        while (1)
+        
+        
+        if (status == SUCCESS)
         {
-            sleep(1);
+            cout << "SUCCESS \n";
+            
+            cout << "Registering Smart Outlet...\n";
+        
+            outletid = client.call("registerf", "device", "outlet", devices_ip, devices_port).as<int>();
+        
+            if (outletid == ERR_SENSOR_NOT_REGISTERED)
+            {
+                cout << "Smart Bulb Registration Failed..\n";
+                status = ERR_DEV_NOT_REGD;
+            }
+        }
+        
+        if (status == SUCCESS)
+        {
+            cout << "SUCCESS \n";
+        
+            /* Loop forever */
+            while (1)
+            {
+                sleep(1);
+            }
         }
     }
 
