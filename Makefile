@@ -4,7 +4,7 @@ CXX = g++
 
 PROJECT_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-DEPS = include/sensors.h sensors/sensors.cpp
+DEPS = include/sensors.h sensors/sensors.cpp include/devices.h devices/devices.cpp
 INCLUDES = $(PROJECT_ROOT)/include
 LIBS = -lrpc -lpthread
 
@@ -29,7 +29,9 @@ sensors: $(DEPS)
 
 gateway: $(DEPS)
 
+
 devices: $(DEPS)
+	$(CXX) $(CXXFLAGS) devices/devices.cpp -I$(INCLUDES) -o $@
 
 clean:
 	rm -rf $(SENSORS_EXE) $(GATEWAY_EXE) $(DEVICES_EXE)
