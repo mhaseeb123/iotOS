@@ -156,18 +156,21 @@ void *report_state(void *arg)
     if (client.get_connection_state() != state)
     {
         cout << "Gateway Not Available.." << endl;
-		return NULL;
+        return NULL;
     }
 
     cout << "CONNECTED \n";
 
     cout << "Registering Temperature Sensor...\n";
     msensor = client.call("registerf", "sensor", "temp", sensor_ip, sensor_port).as<int>();
+
     if (msensor == ERR_SENSOR_NOT_REGISTERED)
     {
+        cout << "Temperature Sensor Registration Failed..\n";
         return NULL;
     }
 
+    if (status == SUCCESS)
     cout << "SUCCESS \n";
 
     cout << "Registering Motion Sensor...\n";
@@ -175,6 +178,7 @@ void *report_state(void *arg)
 
     if (tsensor == ERR_SENSOR_NOT_REGISTERED)
     {
+        cout << "Motion Sensor Registration Failed..\n";
         return NULL;
     }
 
@@ -189,7 +193,7 @@ void *report_state(void *arg)
 
         cout << "report_state" << endl;
 
-        //(void)client.call("report_state", msensor, val);
+        //auto result = client.call("report_state", msensor, val).as<int>;
     }
 
     /* No results required */
@@ -245,11 +249,6 @@ void *Server_Entry(void *arg)
 
     srv.bind("query_state", &query_state);
     srv.bind("change_mode", &change_mode);
-    
-	while (tsensor == ERR_SENSOR_NOT_REGISTERED || msensor == ERR_SENSOR_NOT_REGISTERED)
-    {
-        sleep(1);
-    }
 
     // Run the server loop.
     srv.run();
@@ -298,8 +297,6 @@ STATUS main(int argc, char **argv)
         /* Provide a random seed */
         srand((int) (time(0) * 23) % (1 + 5) + (10 + 1) * 29 - time(0) + (int) time(0) % (5 + 1) * time(0));
 
-        cout << "Main Task: Creating Timers\n\n";
-
         /* Upon SIGALRM, call Update_Temperature() */
         if (signal(SIGALRM, (void (*)(int)) Update)== SIG_ERR)
         {
@@ -315,13 +312,13 @@ STATUS main(int argc, char **argv)
         status = pthread_create(&thread1, NULL, &Server_Entry, NULL);
 		if (status != SUCCESS)
         {
-            printf("Error: TSensor Task Create failed\nABORT!!\n\n");
+            printf("Error: TSensor Task Creation Failed\nABORT!!\n\n");
             status = ERR_THREAD_CREATION_FAILED;
         }
     }
 
     /* Wait for calls to be registered */
-    sleep(0.1);
+    sleep(0.2);
 
     /* Create Tasks (pthreads) */
     if (status == SUCCESS)
@@ -330,19 +327,27 @@ STATUS main(int argc, char **argv)
         status = pthread_create(&thread2, NULL, &report_state, NULL);
 		if (status != SUCCESS)
         {
-            printf("Error: MSensor Task Create failed\nABORT!!\n\n");
+            printf("Error: MSensor Task Creation Failed\nABORT!!\n\n");
             status = ERR_THREAD_CREATION_FAILED;
         }
     }
 
     if (status == SUCCESS)
     {
-		if (status == SUCCESS)
+        cout << "Main Task: Creating Timers\n\n";
+        status = SetTimer(1000);
+
+        if (status != SUCCESS)
         {
-            status = SetTimer(1000);
+            cout << "Timer Creation Failed\n";
         }
+	}
+
+    if (status == SUCCESS)
+    {
         /* If Gateway Not available, then exit */
         pthread_join(thread2, &result_ptr);
+
 		pthread_cancel(thread1);
         
 		//pthread_join(thread1, &result_ptr);
