@@ -55,7 +55,7 @@ string getIPAddress()
     // To retrieve hostname 
     hostname = gethostname(hostbuffer, sizeof(hostbuffer)); 
 
-	if (hostname == -1) 
+    if (hostname == -1) 
     { 
         perror("gethostname"); 
         exit(1); 
@@ -69,12 +69,12 @@ string getIPAddress()
         perror("gethostbyname"); 
         exit(1); 
     }
-	
+    
     // To convert an Internet network 
     // address into ASCII string 
     IPbuffer = inet_ntoa(*((struct in_addr*) 
                            host_entry->h_addr_list[0]));
-	
+    
     string IP(IPbuffer);
     
     return IP;
@@ -94,7 +94,7 @@ void change_mode(int inmode)
         case AWAY:
             mode = AWAY;
             modeoffset = 10;
-			(void)SetTimer(10000);
+            (void)SetTimer(10000);
             break;
 
         case EXIT:
@@ -123,7 +123,7 @@ int Random_Number()
 
 STATUS SetTimer(int msecs)
 {
-	STATUS status = SUCCESS;
+    STATUS status = SUCCESS;
 
     motion_timer.it_value.tv_sec = msecs / 1000;
     motion_timer.it_value.tv_usec = (msecs * 1000) % 1000000;
@@ -135,7 +135,7 @@ STATUS SetTimer(int msecs)
         status = ERR_TIMER_CREATION_FAILED;
     }
 
-    return status;	
+    return status;
 }
 /*
  * FUNCTION: report_state
@@ -150,31 +150,12 @@ void *report_state(void *arg)
     cout << "\nConnecting to Gateway...\n";
 
     rpc::client client(gateway_ip, gateway_port);
-    rpc::client::connection_state state = (rpc::client::connection_state) 1;
-
-    /* Wait until connected */
-    if (client.get_connection_state() != state)
-    {
-        cout << "Gateway Not Available.." << endl;
-        return NULL;
-    }
-
-    cout << "CONNECTED \n";
 
     cout << "Registering Temperature Sensor...\n";
-    msensor = client.call("registerf", "sensor", "temp", sensor_ip, sensor_port).as<int>();
-
-    if (msensor == ERR_SENSOR_NOT_REGISTERED)
-    {
-        cout << "Temperature Sensor Registration Failed..\n";
-        return NULL;
-    }
-
-    if (status == SUCCESS)
-    cout << "SUCCESS \n";
+    tsensor = client.call("registerf", "sensor", "temp", sensor_ip, sensor_port).as<int>();
 
     cout << "Registering Motion Sensor...\n";
-    tsensor = client.call("registerf", "sensor", "motion", sensor_ip, sensor_port).as<int>();
+    msensor = client.call("registerf", "sensor", "motion", sensor_ip, sensor_port).as<int>();
 
     if (tsensor == ERR_SENSOR_NOT_REGISTERED)
     {
@@ -191,9 +172,11 @@ void *report_state(void *arg)
         /* Send data */
         bool val = (Random_Number() & 0x1) == 0 ? 1.0 : 0.0;
 
-        cout << "report_state" << endl;
-
-        //auto result = client.call("report_state", msensor, val).as<int>;
+        if (val==true)
+        {
+            cout << "report_state" << endl;
+            client.call("report_state", msensor, val);
+        }
     }
 
     /* No results required */
@@ -310,7 +293,7 @@ STATUS main(int argc, char **argv)
     {
         printf("Main Task: Creating TSensor Task\n");
         status = pthread_create(&thread1, NULL, &Server_Entry, NULL);
-		if (status != SUCCESS)
+        if (status != SUCCESS)
         {
             printf("Error: TSensor Task Creation Failed\nABORT!!\n\n");
             status = ERR_THREAD_CREATION_FAILED;
@@ -325,7 +308,7 @@ STATUS main(int argc, char **argv)
     {
         printf("Main Task: Creating MSensor Task\n");
         status = pthread_create(&thread2, NULL, &report_state, NULL);
-		if (status != SUCCESS)
+        if (status != SUCCESS)
         {
             printf("Error: MSensor Task Creation Failed\nABORT!!\n\n");
             status = ERR_THREAD_CREATION_FAILED;
@@ -341,20 +324,20 @@ STATUS main(int argc, char **argv)
         {
             cout << "Timer Creation Failed\n";
         }
-	}
+    }
 
     if (status == SUCCESS)
     {
         /* If Gateway Not available, then exit */
         pthread_join(thread2, &result_ptr);
 
-		pthread_cancel(thread1);
+        pthread_cancel(thread1);
         
-		//pthread_join(thread1, &result_ptr);
+        //pthread_join(thread1, &result_ptr);
 
         /* All set - Exit now */
         pthread_exit(NULL);
     }
-	
+
     return status;
 }

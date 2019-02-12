@@ -5,12 +5,12 @@ CXX = g++
 PROJECT_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 DEPS = include/sensors.h sensors/sensors.cpp include/devices.h devices/devices.cpp
-INCLUDES = $(PROJECT_ROOT)/include
+INCLUDES = $(PROJECT_ROOT)include
 LIBS = -lrpc -lpthread
 
-SENSORS_EXE = sensors
-GATEWAY_EXE = gateway
-DEVICES_EXE = devices
+SENSORS_EXE = sensors.exe
+GATEWAY_EXE = gateway.exe
+DEVICES_EXE = devices.exe
 
 # Setup build mode
 ifeq ($(BUILD_MODE),DEBUG)
@@ -21,17 +21,16 @@ else
 	$(error Build mode $(BUILD_MODE) not supported by this Makefile)
 endif
 
-all: sensors gateway devices
-	$(CXX) $(CXXFLAGS) $(LIBPATHS) -Wl,--start-group $(LIBS) -Wl,--end-group -o $(EXECUTEABLE) -Wl,-Map=$(EXECUTEABLE).map
+all: sensors.exe gateway.exe devices.exe
 
-sensors: $(DEPS)
-	$(CXX) $(CXXFLAGS) sensors/sensors.cpp -I$(INCLUDES) -o $@
+sensors.exe: $(DEPS)
+	$(CXX) $(CXXFLAGS) sensors/sensors.cpp -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $@
 
-gateway: $(DEPS)
+gateway.exe: $(DEPS)
 
 
-devices: $(DEPS)
-	$(CXX) $(CXXFLAGS) devices/devices.cpp -I$(INCLUDES) -o $@
+devices.exe: $(DEPS)
+	$(CXX) $(CXXFLAGS) devices/devices.cpp -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $@
 
 clean:
 	rm -rf $(SENSORS_EXE) $(GATEWAY_EXE) $(DEVICES_EXE)

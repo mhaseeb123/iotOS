@@ -105,20 +105,22 @@ long long query_state(int device_id)
     return query;
 }
 
-STATUS change_state(int device_id, bool new_state)
+STATUS change_state(int device_id, int new_state)
 {
     STATUS status = SUCCESS;
-
+    
     if (device_id == bulbid)
     {
+        cout << "Changing State for Smart Bulb to: " << new_state << endl;
         bulb_lock.lock();
-        bulb = new_state;
+        bulb = (bool) new_state;
         bulb_lock.unlock();
     }
     else if (device_id == outletid)
     {
+        cout << "Changing State for Smart Outlet to: " << new_state << endl;
         outlet_lock.lock();
-        outlet = new_state;
+        outlet = (bool) new_state;
         outlet_lock.unlock();
     }
     else
@@ -132,10 +134,6 @@ STATUS change_state(int device_id, bool new_state)
 STATUS main(int argc, char **argv)
 {
     STATUS status = SUCCESS;
-    void *result_ptr = NULL;
-
-    pthread_t thread1;
-    pthread_t thread2;
 
     /* Check if number of tosses passed as parameter */
     if (argc < 3)
@@ -163,7 +161,7 @@ STATUS main(int argc, char **argv)
         }
     }
 
-	if (status == SUCCESS)
+    if (status == SUCCESS)
     {
         // Creating a server that listens on port
         rpc::server srv(devices_port);
@@ -180,16 +178,7 @@ STATUS main(int argc, char **argv)
         
         // Connect to the gateway
         rpc::client client(gateway_ip, gateway_port);
-        rpc::client::connection_state state = (rpc::client::connection_state) 1;
         
-        /* Wait until connected */
-        if (client.get_connection_state() != state)
-        {
-            cout << "Gateway Not Available.." << endl;
-            return 0;
-        }
-        
-        cout << "CONNECTED \n\n";
         cout << "Registering Smart Bulb...\n";
         
         bulbid = client.call("registerf", "device", "bulb", devices_ip, devices_port).as<int>();

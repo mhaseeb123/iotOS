@@ -20,8 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
- 
- 
+
 #include <iostream>
 #include <cstdlib>
 #include <pthread.h>
@@ -86,64 +85,64 @@ int mode = HOME;
 
 void printstuff()
 {
-	std::cout << "registered: ";
-		for (int i = 0; i < 4; i++)
-		{
-			std::cout << isRegistered[i] << " ";
-		}
-		std::cout << std::endl;
-		std::cout << "IP: ";
-		for (int i = 0; i < 4; i++)
-		{
-			if (ips[i] != "")
-				std::cout << ips[i] << " ";
-		}
-		std::cout << std::endl;
+    std::cout << "registered: ";
+        for (int i = 0; i < 4; i++)
+        {
+            std::cout << isRegistered[i] << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "IP: ";
+        for (int i = 0; i < 4; i++)
+        {
+            if (ips[i] != "")
+                std::cout << ips[i] << " ";
+        }
+        std::cout << std::endl;
 }
 
 //change to update the state array by shifting long long.
 long long query_state(int device_id)
 {
-	long long value;
-	switch (device_id)
-	{
-		case 0:
-			if (isRegistered[0] == 1 && ips[0] != "")
-			{
-				rpc::client temp(ips[0], ports[0]);
-				value = temp.call("query_state", device_id).as<long long>();
-			}
-			break;
-		case 1:
-			if (isRegistered[1] == 1 && ips[1] != "")
-			{
-				rpc::client motion(ips[1], ports[1]);
-				value = motion.call("query_state", device_id).as<long long>();
-			}
-			break;
-		case 2:
-			if (isRegistered[2] == 1 && ips[2] != "")
-			{
-				rpc::client bulb(ips[2], ports[2]);
-				value = bulb.call("query_state", device_id).as<long long>();
-			}
-			break;
-		case 3:
-			if (isRegistered[3] == 1 && ips[3] != "")
-			{
-				rpc::client outlet(ips[3], ports[3]);
-				value = outlet.call("query_state", device_id).as<long long>();
-			}
-			break;
-		default:
-			value = 0;
-	}
-	return value;
+    long long value;
+    switch (device_id)
+    {
+        case 0:
+            if (isRegistered[0] == 1 && ips[0] != "")
+            {
+                rpc::client temp(ips[0], ports[0]);
+                value = temp.call("query_state", device_id).as<long long>();
+            }
+            break;
+        case 1:
+            if (isRegistered[1] == 1 && ips[1] != "")
+            {
+                rpc::client motion(ips[1], ports[1]);
+                value = motion.call("query_state", device_id).as<long long>();
+            }
+            break;
+        case 2:
+            if (isRegistered[2] == 1 && ips[2] != "")
+            {
+                rpc::client bulb(ips[2], ports[2]);
+                value = bulb.call("query_state", device_id).as<long long>();
+            }
+            break;
+        case 3:
+            if (isRegistered[3] == 1 && ips[3] != "")
+            {
+                rpc::client outlet(ips[3], ports[3]);
+                value = outlet.call("query_state", device_id).as<long long>();
+            }
+            break;
+        default:
+            value = 0;
+    }
+    return value;
 }
 
 void UpdateTimer(int msecs)
 {
-	STATUS status = SUCCESS;
+    STATUS status = SUCCESS;
 
     motion_timer.it_value.tv_sec = msecs / 1000;
     motion_timer.it_value.tv_usec = (msecs * 1000) % 1000000;
@@ -154,7 +153,7 @@ void UpdateTimer(int msecs)
         cout << "Timer Update Failed !\n";
     }
 
-    return ;	
+    return ;    
 }
 
 void DisableTimer()
@@ -168,30 +167,30 @@ void DisableTimer()
         cout << "Disable Timer Failed !\n";
     }
 
-    return ;	
+    return ;    
 }
 
 
 int change_state(int device_id, int state)
 {
-	int ack = FAILURE;
-	
-	if (isRegistered[device_id] == 1 && ips[device_id] != "")
-	{
-		rpc::client cln(ips[device_id], ports[device_id]);
-		ack = cln.call("change_state", device_id, state).as<int>();
-		
-		if (ack == SUCCESS)
-			states[device_id - 2] = state;
-	}
-	return ack;
+    int ack = FAILURE;
+    
+    if (isRegistered[device_id] == 1 && ips[device_id] != "")
+    {
+        rpc::client cln(ips[device_id], ports[device_id]);
+        ack = cln.call("change_state", device_id, state).as<int>();
+        
+        if (ack == SUCCESS)
+            states[device_id - 2] = state;
+    }
+    return ack;
 }
 
 void TimerExpired()
 {
     bulb_lock.lock();
-	change_state(BULB, BULBOFF);
-	bulb_lock.unlock();
+    change_state(BULB, BULBOFF);
+    bulb_lock.unlock();
 }
 
 void *UserEntry(void *arg)
@@ -203,144 +202,156 @@ void *HeatManage(void *arg)
 {
     start_lock.lock();
     start_lock.unlock();
-	
-	long long temp_and_id = -1;
-	int device_id = -1;
+    
+    long long temp_and_id = -1;
+    int device_id = -1;
 
     while (true)
-	{
-	    sleep(3);
-	    device_id = (int)(temp_and_id >> 32);
-	    temp_and_id = query_state(TEMP);
-	    temperature = (float)(temp_and_id & 0xFFFFFFFF);
-	
-		if (device_id == TEMP)
-		{
-			if (temperature < 1.0)
-			{
-				change_state(OUTLET, true);
-			}
-	
-			if (temperature > 2.0)
-			{
-				change_state(OUTLET, false);
-			}
-		}
-	}
-	
-	return NULL;
+    {
+        sleep(3);
+        device_id = (int)(temp_and_id >> 32);
+        temp_and_id = query_state(TEMP);
+        temperature = (float)(temp_and_id & 0xFFFFFFFF);
+    
+        if (device_id == TEMP)
+        {
+            if (temperature < 1.0)
+            {
+                change_state(OUTLET, true);
+            }
+    
+            if (temperature > 2.0)
+            {
+                change_state(OUTLET, false);
+            }
+        }
+    }
+    
+    return NULL;
 }
 
 void *BulbManage(void *arg)
 {
     start_lock.lock();
     start_lock.unlock();
-	
-	while (true)
-	{
-		motion_lock.lock();
-		bulb_lock.lock();
-		
-		if (isRegistered[BULB] == 1)
-		{
-	        switch (mode)
-	        {
-			    case HOME:
-					change_state(BULB, BULBON);
-					UpdateTimer(2000); // Reset the timer
-					break;
-					
-				case AWAY:
-					//OMG. HELP. Intruder in the house.
-					DisableTimer(); // Keep the timer off.
-					break;
-				default:
-					break;
-			}
-		}
-	}
-	
-	return NULL;
+    
+    while (true)
+    {
+        motion_lock.lock();
+        bulb_lock.lock();
+        
+        if (isRegistered[BULB] == 1)
+        {
+            switch (mode)
+            {
+                case HOME:
+                    change_state(BULB, BULBON);
+                    UpdateTimer(10000); // Reset the timer
+                    break;
+                    
+                case AWAY:
+                    //OMG. HELP. Intruder in the house.
+                    DisableTimer(); // Keep the timer off.
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        bulb_lock.unlock();
+    }
+    
+    return NULL;
 }
 
 
 int change_mode(int inmode)
 {
-	mode = inmode;
+    mode = inmode;
 }
 
-int main() {
-	ips = new std::string[4];
-	
-	void *result_ptr = NULL;
-	
-	motion_lock.lock();
-	start_lock.lock();
-	
-	pthread_t user_task;
-	pthread_t bulb_manage;
-	pthread_t heat_manage;
-	
-	/* Upon SIGALRM, call Update_Temperature() */
+int main() 
+{    
+    ips = new std::string[4];
+    
+    void *result_ptr = NULL;
+    
+    motion_lock.lock();
+    start_lock.lock();
+    
+    pthread_t user_task;
+    pthread_t bulb_manage;
+    pthread_t heat_manage;
+    
+    /* Upon SIGALRM, call Update_Temperature() */
     if (signal(SIGALRM, (void (*)(int)) TimerExpired)== SIG_ERR)
     {
         cout <<"Unable to catch SIGALRM \n";
     }
-		
+        
     rpc::server srv(8080);
+    
+    cout << "Running Server " <<endl;
 
-	srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port) {
-		
-		for (int i = 0; i < 4; i++)
+    srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port) 
+    {
+        cout << "registerf called " <<endl;
+        int devid = 4;
+        
+        for (int i = 0; i < 4; i++)
         {
-                if (lname.compare(name[i]) == 0)
-                {
-					if (isRegistered[i] == 0)
-					{
-                        isRegistered[i] = 1;
-						ips[i] = IP;
-						ports[i] = port;
-						printstuff();
-						devs_reg++;
-                        return i;
-					}
-					else
-					{
-						return i;
-					}
-                }
+           if (lname.compare(name[i]) == 0)
+           {
+               if (isRegistered[i] == 0)
+               {
+                   isRegistered[i] = 1;
+                   ips[i] = IP;
+                   ports[i] = port;
+                   printstuff();
+                      devs_reg++;
+                   devid = i;
+               }
+               else
+               {
+                     devid = i;
+               }
+           }
+           
+           if (devs_reg == 4)
+           {
+                // Let's start the smart home
+                start_lock.unlock();
+                cout << "Starting Home " <<endl;
+                UpdateTimer(10000);
+           }
         }
-		
-		if (devs_reg == 4)
-		{
-			// Let's start the smart home
-			start_lock.unlock();
-			UpdateTimer(2000);
-		}
-        return 4;
-	});
+        
+        return devid;
+    });
 
     //report_state
-	srv.bind("report_state", [](int device_id, bool state) {
-		if (device_id == MOTION)
-		{
+    srv.bind("report_state", [](int device_id, bool state) {
+        cout << "Motion Detected: " << device_id << endl;
+        
+        if (device_id == MOTION)
+        {
             DisableTimer(); // stop the timer
             motion_lock.unlock(); // update
-		}
-	});
+        }
+    });
 
     // Run the server loop.
     srv.async_run(4);
-	
-	pthread_create(&user_task, NULL, &UserEntry, NULL);
-	pthread_create(&bulb_manage, NULL, &BulbManage, NULL);
-	pthread_create(&heat_manage, NULL, &HeatManage, NULL);
-	
-	pthread_join(user_task, &result_ptr);
-	pthread_join(bulb_manage, &result_ptr);
-	pthread_join(heat_manage, &result_ptr);
-	
-	pthread_exit(NULL);
+    
+    pthread_create(&user_task, NULL, &UserEntry, NULL);
+    pthread_create(&bulb_manage, NULL, &BulbManage, NULL);
+    pthread_create(&heat_manage, NULL, &HeatManage, NULL);
+    
+    pthread_join(user_task, &result_ptr);
+    pthread_join(bulb_manage, &result_ptr);
+    pthread_join(heat_manage, &result_ptr);
+    
+    pthread_exit(NULL);
 
     return 0;
 }

@@ -70,6 +70,6 @@ typedef std::mutex LOCK;
 /* Function Prototypes */
 std::string getIPAddress();
 long long query_state(int device_id);
-STATUS change_state(int device_id, bool new_state);
+STATUS change_state(int device_id, int new_state);
 
 #endif /* SENSORS_H_ */
