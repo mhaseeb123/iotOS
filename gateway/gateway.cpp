@@ -288,34 +288,43 @@ int change_mode(int inmode)
     mode = inmode;
 }
 
-int main() 
-{    
+STATUS main() 
+{
+    STATUS status = SUCCESS;
+
     ips = new std::string[4];
-    
     void *result_ptr = NULL;
-    
-    motion_lock.lock();
-    start_lock.lock();
-    
+        
     pthread_t user_task;
     pthread_t bulb_manage;
     pthread_t heat_manage;
     
+    /* Lock the Motion Sensor and Automation */
+    motion_lock.lock();
+    start_lock.lock();
+
     /* Upon SIGALRM, call Update_Temperature() */
     if (signal(SIGALRM, (void (*)(int)) TimerExpired)== SIG_ERR)
     {
         cout <<"Unable to catch SIGALRM \n";
+        status = ERR_TIMER_CREATION_FAILED;
     }
-        
-    rpc::server srv(8080);
-    
-    cout << "Running Server " <<endl;
 
+    /* Initialize the RPC server */
+    rpc::server srv(8080);
+
+#ifdef DEBUG
+    cout << "Running Server " <<endl;
+#ifdef endif
+
+    /* Bind the Register Function */
     srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port) 
     {
+#ifdef DEBUG
         //cout << "registerf called " <<endl;
+#endif
         int devid = 4;
-        
+
         for (int i = 0; i < 4; i++)
         {
            if (lname.compare(name[i]) == 0)
@@ -334,12 +343,13 @@ int main()
                      devid = i;
                }
            }
-           
            if (devs_reg == 4)
            {
                 // Let's start the smart home
                 start_lock.unlock();
+#ifdef DEBUG
                 cout << "Starting Home " <<endl;
+#endif
                 UpdateTimer(HOMETIMER);
            }
         }
@@ -347,10 +357,12 @@ int main()
         return devid;
     });
 
-    //report_state
-    srv.bind("report_state", [](int device_id, bool state) {
+    /* Bind the report_state Function */
+    srv.bind("report_state", [](int device_id, bool state)
+    {
+#ifdef DEBUG
         cout << "Motion Detected: " << device_id << endl;
-        
+#endif
         if (device_id == MOTION)
         {
             DisableTimer(); // stop the timer
@@ -358,18 +370,52 @@ int main()
         }
     });
 
-    // Run the server loop.
+    /* Run the server loop */
     srv.async_run(4);
     
-    pthread_create(&user_task, NULL, &UserEntry, NULL);
-    pthread_create(&bulb_manage, NULL, &BulbManage, NULL);
-    pthread_create(&heat_manage, NULL, &HeatManage, NULL);
-    
-    pthread_join(user_task, &result_ptr);
-    pthread_join(bulb_manage, &result_ptr);
-    pthread_join(heat_manage, &result_ptr);
-    
-    pthread_exit(NULL);
+    /* Create pthreads */
+    if (status == SUCCESS)
+    { 
+        status = pthread_create(&user_task, NULL, &UserEntry, NULL);
 
-    return 0;
+        if (status != SUCCESS)
+        {
+            printf("Error: Task Creation Failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
+        }
+	}
+    
+    if (status == SUCCESS)
+    { 
+        status = pthread_create(&bulb_manage, NULL, &BulbManage, NULL);
+
+        if (status != SUCCESS)
+        {
+            printf("Error: Task Creation Failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
+        }
+    }
+	
+    if (status == SUCCESS)
+    { 
+        status = pthread_create(&heat_manage, NULL, &HeatManage, NULL);
+
+        if (status != SUCCESS)
+        {
+            printf("Error: TSensor Task Creation Failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
+        }
+    }
+
+    /* All set, let the threads run */
+    if (status == SUCCESS)
+    { 
+        pthread_join(user_task, &result_ptr);
+        pthread_join(bulb_manage, &result_ptr);
+        pthread_join(heat_manage, &result_ptr);
+    
+        pthread_exit(NULL);
+    }
+
+    return status;
 }
