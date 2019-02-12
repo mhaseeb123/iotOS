@@ -1,48 +1,88 @@
+/*
+ * The MIT License (MIT)
+ * Copyright (c) 2019 Muhammad Haseeb, Usman Tariq
+ *      COP5614: Operating Systems | SCIS FIU
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+ 
+ 
 #include <iostream>
-#include <string>
+#include <cstdlib>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <unistd.h>
+#include <signal.h>
+#include <mutex>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/types.h> 
+#include <sys/socket.h> 
+#include <netinet/in.h> 
+#include <arpa/inet.h>
 #include "rpc/server.h"
 #include "rpc/client.h"
 
-#define TEMP 0
-#define MOTION 1
-#define BULB 2
-#define OUTLET 3
+#define TEMP           0
+#define MOTION         1
+#define BULB           2
+#define OUTLET         3
 
-#define SENSOR 0
-#define DEVICE 1
+#define SUCCESS        0
+#define FAILURE        1
 
-#define SUCCESS 0
-#define FAILURE 1
+#define BULBON         1
+#define BULBOFF        0
 
-#define ISMOTION 1
-#define NOMOTION 0
+#define OFF            0
+#define ON             1
 
-#define BULBON = 1
-#define BULBOFF = 0
+typedef int STATUS;
+typedef unsigned int MODE;
+typedef struct itimerval TIMER;
+typedef std::mutex LOCK;
 
+#define HOME           1 << 0
+#define AWAY           1 << 1
+#define EXIT           1 << 2
 
-
-#define HOME                             1 << 0
-#define AWAY                             1 << 1
-#define EXIT                             1 << 2
+using namespace std;
 
 int registerf(std::string ltype, std::string lname);
 
 std::string name[4] = {"temp", "motion", "bulb", "outlet"};
 std::string type[4] = {"sensor", "sensor", "device", "device"};
+int devs_reg = 0;
 std::string *ips;
 int ports[4] = {0};
 static int isRegistered[4] = {0};
-int states[4] = {0};
+TIMER motion_timer;
+float temperature = 1.0;
+int states[2] = {OFF, OFF};
 
-std::string mode = HOME;
 
-void foo() {
-    std::cout << "foo was called!" << std::endl;
-}
+LOCK motion_lock;
+LOCK bulb_lock;
+LOCK start_lock;
+
+
+int mode = HOME;
 
 void printstuff()
 {
@@ -60,7 +100,6 @@ void printstuff()
 		}
 		std::cout << std::endl;
 }
-
 
 //change to update the state array by shifting long long.
 long long query_state(int device_id)
@@ -102,95 +141,154 @@ long long query_state(int device_id)
 	return value;
 }
 
+void UpdateTimer(int msecs)
+{
+	STATUS status = SUCCESS;
+
+    motion_timer.it_value.tv_sec = msecs / 1000;
+    motion_timer.it_value.tv_usec = (msecs * 1000) % 1000000;
+    motion_timer.it_interval = motion_timer.it_value;
+
+    if (setitimer(ITIMER_REAL, &motion_timer, NULL) == -1)
+    {
+        cout << "Timer Update Failed !\n";
+    }
+
+    return ;	
+}
+
+void DisableTimer()
+{
+    motion_timer.it_value.tv_sec = 0;
+    motion_timer.it_value.tv_usec = 0;
+    motion_timer.it_interval = motion_timer.it_value;
+
+    if (setitimer(ITIMER_REAL, &motion_timer, NULL) == -1)
+    {
+        cout << "Disable Timer Failed !\n";
+    }
+
+    return ;	
+}
+
+
 int change_state(int device_id, int state)
 {
 	int ack = FAILURE;
+	
 	if (isRegistered[device_id] == 1 && ips[device_id] != "")
 	{
 		rpc::client cln(ips[device_id], ports[device_id]);
-		ack = cln.call("change_state", device_id, state);
+		ack = cln.call("change_state", device_id, state).as<int>();
 		
 		if (ack == SUCCESS)
-			states[device_id] = state;
+			states[device_id - 2] = state;
 	}
 	return ack;
 }
 
-//call this function every 5 secs in a new thread.
-int task1()
+void TimerExpired()
 {
-	long long temp_and_id = query_state(TEMP);
-	int device_id = (int) (temp_and_id >> 32);
-	int temperature = (int) temp_and_id;
-	
-	if (device_id == TEMP)
-	{
-		if (temperature < 1)
-		{
-			chagne_state(OUTLET, true);
-		}
-		if (temperature > 2)
-		{
-			change_state(OUTLET, false);
-		}
-	}
+    bulb_lock.lock();
+	change_state(BULB, BULBOFF);
+	bulb_lock.unlock();
 }
 
-int task2(int isMotion)
+void *UserEntry(void *arg)
 {
-	long long bulb_state_and_id = query_state(BULB);
-	int device_id = (int) (bulb_state_and_id >> 32);
-	int isON = (int) bulb_state_and_id;
-	
-	switch (mode)
-	{
-		case HOME:
-			if (states[MOTION] == ISMOTION && isON == BULBOFF)
-			{
-				// if timer running, stop the timer.
-				change_state(BULB, BULBON);
-			}
-			if (states[MOTION] == NOMOTION && isON == BULBON)
-			{
-				// if timer not running start 5 min timer
-				// else keep the timer running
-			}
-			break;
-		case AWAY:
-			if (states[MOTION] == ISMOTION)
-			{
-				//OMG. HELP. Intruder in the house.
-			}
-			break;
-		default:
-	}
+    return NULL;
 }
+
+void *HeatManage(void *arg)
+{
+    start_lock.lock();
+    start_lock.unlock();
+	
+	long long temp_and_id = -1;
+	int device_id = -1;
+
+    while (true)
+	{
+	    sleep(3);
+	    device_id = (int)(temp_and_id >> 32);
+	    temp_and_id = query_state(TEMP);
+	    temperature = (float)(temp_and_id & 0xFFFFFFFF);
+	
+		if (device_id == TEMP)
+		{
+			if (temperature < 1.0)
+			{
+				change_state(OUTLET, true);
+			}
+	
+			if (temperature > 2.0)
+			{
+				change_state(OUTLET, false);
+			}
+		}
+	}
+	
+	return NULL;
+}
+
+void *BulbManage(void *arg)
+{
+    start_lock.lock();
+    start_lock.unlock();
+	
+	while (true)
+	{
+		motion_lock.lock();
+		bulb_lock.lock();
+		
+		if (isRegistered[BULB] == 1)
+		{
+	        switch (mode)
+	        {
+			    case HOME:
+					change_state(BULB, BULBON);
+					UpdateTimer(2000); // Reset the timer
+					break;
+					
+				case AWAY:
+					//OMG. HELP. Intruder in the house.
+					DisableTimer(); // Keep the timer off.
+					break;
+				default:
+					break;
+			}
+		}
+	}
+	
+	return NULL;
+}
+
 
 int change_mode(int inmode)
 {
 	mode = inmode;
 }
 
-int main(int argc, char *argv[]) {
-    // Creating a server that listens on port 8080
+int main() {
 	ips = new std::string[4];
 	
-	pthread_t thread1;
-	pthread_t thread2;
+	void *result_ptr = NULL;
 	
+	motion_lock.lock();
+	start_lock.lock();
+	
+	pthread_t user_task;
+	pthread_t bulb_manage;
+	pthread_t heat_manage;
+	
+	/* Upon SIGALRM, call Update_Temperature() */
+    if (signal(SIGALRM, (void (*)(int)) TimerExpired)== SIG_ERR)
+    {
+        cout <<"Unable to catch SIGALRM \n";
+    }
+		
     rpc::server srv(8080);
 
-    // Binding the name "foo" to free function foo.
-    // note: the signature is automatically captured
-    srv.bind("foo", &foo);
-
-    // Binding a lambda function to the name "add".
-    srv.bind("add", [](int a, int b) {
-        return a + b;
-    });
-	
-	//4 = wrong name.
-	//5 = already registered.
 	srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port) {
 		
 		for (int i = 0; i < 4; i++)
@@ -203,25 +301,46 @@ int main(int argc, char *argv[]) {
 						ips[i] = IP;
 						ports[i] = port;
 						printstuff();
+						devs_reg++;
                         return i;
 					}
 					else
-						return 5;
+					{
+						return i;
+					}
                 }
         }
+		
+		if (devs_reg == 4)
+		{
+			// Let's start the smart home
+			start_lock.unlock();
+			UpdateTimer(2000);
+		}
         return 4;
 	});
-	
-	//report_state
-	srv.bind("report_state", [](int device_id, int state) {
-		if (device_id == 1)
+
+    //report_state
+	srv.bind("report_state", [](int device_id, bool state) {
+		if (device_id == MOTION)
 		{
-			states[1] = state;
+            DisableTimer(); // stop the timer
+            motion_lock.unlock(); // update
 		}
 	});
 
     // Run the server loop.
-    srv.run();
+    srv.async_run(4);
+	
+	pthread_create(&user_task, NULL, &UserEntry, NULL);
+	pthread_create(&bulb_manage, NULL, &BulbManage, NULL);
+	pthread_create(&heat_manage, NULL, &HeatManage, NULL);
+	
+	pthread_join(user_task, &result_ptr);
+	pthread_join(bulb_manage, &result_ptr);
+	pthread_join(heat_manage, &result_ptr);
+	
+	pthread_exit(NULL);
 
     return 0;
 }
