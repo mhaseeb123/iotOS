@@ -85,7 +85,8 @@ int mode = HOME;
 
 void printstuff()
 {
-    std::cout << "registered: ";
+#ifdef DEBUG
+    std::cout << "Registered: ";
         for (int i = 0; i < 4; i++)
         {
             std::cout << isRegistered[i] << " ";
@@ -98,6 +99,7 @@ void printstuff()
                 std::cout << ips[i] << " ";
         }
         std::cout << std::endl;
+#endif
 }
 
 //change to update the state array by shifting long long.
@@ -307,7 +309,7 @@ STATUS main()
     if (signal(SIGALRM, (void (*)(int)) TimerExpired)== SIG_ERR)
     {
         cout <<"Unable to catch SIGALRM \n";
-        status = ERR_TIMER_CREATION_FAILED;
+        //status = ERR_TIMER_CREATION_FAILED;
     }
 
     /* Initialize the RPC server */
@@ -315,13 +317,13 @@ STATUS main()
 
 #ifdef DEBUG
     cout << "Running Server " <<endl;
-#ifdef endif
+#endif
 
     /* Bind the Register Function */
     srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port) 
     {
 #ifdef DEBUG
-        //cout << "registerf called " <<endl;
+        cout << "registerf called " <<endl;
 #endif
         int devid = 4;
 
@@ -331,16 +333,23 @@ STATUS main()
            {
                if (isRegistered[i] == 0)
                {
+                   /* Store the device/sensor information */
                    isRegistered[i] = 1;
                    ips[i] = IP;
                    ports[i] = port;
+#ifdef DEBUG
                    printstuff();
-                      devs_reg++;
+#endif
+                   /* Add the number of sensors/devices registered */
+                   devs_reg++;
+
+                   /* Assign and return the ID to the device */
                    devid = i;
                }
                else
                {
-                     devid = i;
+                   /* Device already registered, just reutn the same ID */ 
+                   devid = i;
                }
            }
            if (devs_reg == 4)
@@ -381,7 +390,7 @@ STATUS main()
         if (status != SUCCESS)
         {
             printf("Error: Task Creation Failed\nABORT!!\n\n");
-            status = ERR_THREAD_CREATION_FAILED;
+           // status = ERR_THREAD_CREATION_FAILED;
         }
 	}
     
@@ -392,7 +401,7 @@ STATUS main()
         if (status != SUCCESS)
         {
             printf("Error: Task Creation Failed\nABORT!!\n\n");
-            status = ERR_THREAD_CREATION_FAILED;
+            //status = ERR_THREAD_CREATION_FAILED;
         }
     }
 	
@@ -403,7 +412,7 @@ STATUS main()
         if (status != SUCCESS)
         {
             printf("Error: TSensor Task Creation Failed\nABORT!!\n\n");
-            status = ERR_THREAD_CREATION_FAILED;
+            //status = ERR_THREAD_CREATION_FAILED;
         }
     }
 
