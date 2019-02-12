@@ -24,6 +24,8 @@
 #include "sensors.h"
 using namespace std;
 
+#define MOTIONTIME    2000
+
 /* Global Variables */
 string gateway_ip;
 int gateway_port;
@@ -94,7 +96,7 @@ void change_mode(int inmode)
         case AWAY:
             mode = AWAY;
             modeoffset = 10;
-            (void)SetTimer(10000);
+            (void)SetTimer(MOTIONTIME * 10000);
             break;
 
         case EXIT:
@@ -174,7 +176,7 @@ void *report_state(void *arg)
 
         if (val==true)
         {
-            cout << "report_state" << endl;
+            //cout << "report_state" << endl;
             client.call("report_state", msensor, val);
         }
     }
@@ -203,8 +205,10 @@ long long query_state(int device_id)
     }
 
     /* Mux device_id */
+    cout << "Temperature Reported " << res << endl;
 
-    long long query = (long long) res;
+    /* Scale the temperature to 1000 */
+    long long query = (long long) (res * TEMPSCALE);
     query |= ((long long) device_id << 32);
 
     return query;
@@ -318,7 +322,7 @@ STATUS main(int argc, char **argv)
     if (status == SUCCESS)
     {
         cout << "Main Task: Creating Timers\n\n";
-        status = SetTimer(1000);
+        status = SetTimer(MOTIONTIME);
 
         if (status != SUCCESS)
         {

@@ -56,6 +56,9 @@
 /* Defined by the Gateway */
 #define ERR_SENSOR_NOT_REGISTERED        4
 
+/* Scaling Factor for temperature sensor data */
+#define TEMPSCALE      1000
+
 /* Macros */
 #define HOME                             1 << 0
 #define AWAY                             1 << 1

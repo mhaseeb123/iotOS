@@ -46,11 +46,11 @@
 #define SUCCESS        0
 #define FAILURE        1
 
-#define BULBON         1
-#define BULBOFF        0
-
 #define OFF            0
 #define ON             1
+
+#define HOMETIMER      2000
+#define TEMPSCALE      1000
 
 typedef int STATUS;
 typedef unsigned int MODE;
@@ -189,7 +189,13 @@ int change_state(int device_id, int state)
 void TimerExpired()
 {
     bulb_lock.lock();
-    change_state(BULB, BULBOFF);
+
+    cout << "Timer Expired " << endl;
+    if (states[BULB-2] == ON)
+    {
+        change_state(BULB, OFF);
+    }
+
     bulb_lock.unlock();
 }
 
@@ -208,21 +214,29 @@ void *HeatManage(void *arg)
 
     while (true)
     {
-        sleep(3);
-        device_id = (int)(temp_and_id >> 32);
+        sleep(5);
         temp_and_id = query_state(TEMP);
+        device_id = (int)(temp_and_id >> 32);
         temperature = (float)(temp_and_id & 0xFFFFFFFF);
+
+        //cout << "Temperature Reported: "<< temperature << endl;
     
         if (device_id == TEMP)
         {
-            if (temperature < 1.0)
+            if (temperature < 1.0 * TEMPSCALE)
             {
-                change_state(OUTLET, true);
+                if (states[OUTLET-2] == OFF)
+                {
+                    change_state(OUTLET, ON);
+                }
             }
     
-            if (temperature > 2.0)
+            if (temperature > 2.0 * TEMPSCALE)
             {
-                change_state(OUTLET, false);
+                if (states[OUTLET-2] == ON)
+                {
+                    change_state(OUTLET, OFF);
+                }
             }
         }
     }
@@ -242,20 +256,24 @@ void *BulbManage(void *arg)
         
         if (isRegistered[BULB] == 1)
         {
-            switch (mode)
-            {
-                case HOME:
-                    change_state(BULB, BULBON);
-                    UpdateTimer(10000); // Reset the timer
-                    break;
-                    
-                case AWAY:
-                    //OMG. HELP. Intruder in the house.
-                    DisableTimer(); // Keep the timer off.
-                    break;
-                default:
-                    break;
-            }
+                switch (mode)
+                {
+                    case HOME:
+                        if (states[BULB-2]==OFF)
+                        {
+                            change_state(BULB, ON);
+                        }
+
+                        UpdateTimer(HOMETIMER); // Reset the timer
+                        break;
+                        
+                    case AWAY:
+                        //OMG. HELP. Intruder in the house.
+                        DisableTimer(); // Keep the timer off.
+                        break;
+                    default:
+                        break;
+                }
         }
 
         bulb_lock.unlock();
@@ -295,7 +313,7 @@ int main()
 
     srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port) 
     {
-        cout << "registerf called " <<endl;
+        //cout << "registerf called " <<endl;
         int devid = 4;
         
         for (int i = 0; i < 4; i++)
@@ -322,7 +340,7 @@ int main()
                 // Let's start the smart home
                 start_lock.unlock();
                 cout << "Starting Home " <<endl;
-                UpdateTimer(10000);
+                UpdateTimer(HOMETIMER);
            }
         }
         
