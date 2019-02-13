@@ -59,7 +59,7 @@ typedef std::mutex LOCK;
 
 #define HOME           1 << 0
 #define AWAY           1 << 1
-#define EXIT           1 << 2
+#define EXIT           0
 
 using namespace std;
 
@@ -86,6 +86,21 @@ LOCK mode_lock;
 
 int mode = HOME;
 
+void printHeader()
+{
+	cout << "**********************************\n";
+	cout << "*                                *\n";
+	cout << "* COP5614:  IoT and Smart Home   *\n";
+	cout << "* Muhammad Haseeb, Usman Tariq   *\n";
+	cout << "*                                *\n";
+	cout << "**********************************\n\n";
+}
+
+void askMode()
+{
+    printf("\n\n Set the Home Mode? (1= Home), (2 = Away), (0 = Exit) \n Current Mode: %d \\> ", mode);    
+    fflush(stdout);
+}
 
 void printstuff()
 {
@@ -209,7 +224,9 @@ void TimerExpired()
 
 void text_message(int sig)
 {
-    cout << endl << "    !!!INTRUDER ALERT !!!\n Info: Sensed motion in the house" << endl;
+    cout << endl << endl << "    !!!INTRUDER ALERT !!!\n Info: Sensed motion in the house" << endl;
+    askMode();
+
     return;
 }
 
@@ -225,13 +242,22 @@ void *UserEntry(void *arg)
 	void (*prev_handler)(int);
 	prev_handler = signal(SIGINT, text_message);
 
+    (void *) prev_handler;
+
     while (true)
     {
-        cout << endl << "Set the Mode \\> ";
+        askMode();
         cin >> lmode;
+
         if (lmode >= HOME && lmode <= AWAY)
         {
             change_mode(lmode);
+        }
+        else if (lmode == EXIT)
+        {
+            signal(SIGINT, SIG_DFL);
+            change_mode(lmode);
+            exit(0);
         }
     }
 
@@ -325,16 +351,23 @@ void change_mode(int lmode)
     {
         mode = lmode;
         rpc::client cln(ips[MOTION], ports[MOTION]);
-        cln.call("change_mode", mode);
-    
-        if (mode == HOME)
+        cln.async_call("change_mode", lmode);   
+
+        if (lmode == HOME)
         {
+            change_state(BULB, ON);
     	    UpdateTimer(HOMETIMER);
         }
-        else if (mode == AWAY)
+        else if (lmode == AWAY)
         {
+            change_state(BULB, OFF);
             DisableTimer();
         }
+		else if (lmode == EXIT)
+		{
+            rpc::client cln2(ips[OUTLET], ports[OUTLET]);
+            cln2.call("powerdown"); 
+		}
     }
 
     mode_lock.unlock();
@@ -354,6 +387,13 @@ STATUS main()
     /* Lock the Motion Sensor and Automation */
     motion_lock.lock();
     start_lock.lock();
+
+	/* Print Header */
+    printHeader();
+	
+    cout << "GATEWAY: Waiting for Sensors and Devices...";
+	
+    fflush(stdout);
 
     /* Upon SIGALRM, call Update_Temperature() */
     if (signal(SIGALRM, (void (*)(int)) TimerExpired)== SIG_ERR)

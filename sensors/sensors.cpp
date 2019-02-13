@@ -102,6 +102,7 @@ void change_mode(int inmode)
 
         case EXIT:
             mode = EXIT;
+            exit(0);
             break;
 
         default:
@@ -177,7 +178,7 @@ void *report_state(void *arg)
 
         if (val==true)
         {
-            //cout << "report_state" << endl;
+            cout << "Motion Detected " << endl;
             client.call("report_state", msensor, val);
         }
     }

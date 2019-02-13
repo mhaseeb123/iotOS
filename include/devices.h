@@ -59,7 +59,7 @@
 /* Macros */
 #define HOME                             1 << 0
 #define AWAY                             1 << 1
-#define EXIT                             1 << 2
+#define EXIT                             0
 
 /* Typedefs */
 typedef int STATUS;

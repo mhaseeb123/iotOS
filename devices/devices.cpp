@@ -39,6 +39,7 @@ int outletid = ERR_SENSOR_NOT_REGISTERED;
 
 LOCK bulb_lock;
 LOCK outlet_lock;
+LOCK mode_lock;
 
 // This functions from: https://www.geeksforgeeks.org/c-program-display-hostname-ip-address/
 string getIPAddress()
@@ -105,6 +106,12 @@ long long query_state(int device_id)
     return query;
 }
 
+void powerdown()
+{
+    mode_lock.unlock();
+	return;
+}
+
 STATUS change_state(int device_id, int new_state)
 {
     STATUS status = SUCCESS;
@@ -130,11 +137,38 @@ STATUS change_state(int device_id, int new_state)
 
     return status;
 }
+/*
+ * FUNCTION: report_state
+ * DESCRIPTION: Entry function for Server Task
+ *
+ * @params: args: pointer to input arguments
+ * @returns: pointer to any results
+ */
+void *ServerEntry(void *arg)
+{
+    // Creating a server that listens on port
+    rpc::server srv(devices_port);
+
+    cout << "Registering calls \n";
+    
+    srv.bind("query_state", &query_state);
+    srv.bind("change_state", &change_state);
+	srv.bind("powerdown", &powerdown);
+    
+    // Run the server loop with 2 threads
+    srv.async_run(2);
+
+    mode_lock.lock();
+}
+
 /* Main Function */
 STATUS main(int argc, char **argv)
 {
     STATUS status = SUCCESS;
-
+    void *result_ptr = NULL;
+    pthread_t devs;
+	mode_lock.lock();
+	
     /* Check if number of tosses passed as parameter */
     if (argc < 3)
     {
@@ -163,17 +197,17 @@ STATUS main(int argc, char **argv)
 
     if (status == SUCCESS)
     {
-        // Creating a server that listens on port
-        rpc::server srv(devices_port);
-           
-        cout << "Registering calls \n";
-        
-        srv.bind("query_state", &query_state);
-        srv.bind("change_state", &change_state);
-        
-        // Run the server loop with 2 threads
-        srv.async_run(2);
-        
+        printf("Main Task: Creating MSensor Task\n");
+        status = pthread_create(&devs, NULL, &ServerEntry, NULL);
+        if (status != SUCCESS)
+        {
+            printf("Error: MSensor Task Creation Failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
+        }
+    }
+
+    if (status == SUCCESS)
+    {        
         cout << "\nConnecting to Gateway...\n";
         
         // Connect to the gateway
@@ -207,13 +241,8 @@ STATUS main(int argc, char **argv)
         
         if (status == SUCCESS)
         {
-            cout << "SUCCESS \n";
-        
-            /* Loop forever */
-            while (1)
-            {
-                sleep(1);
-            }
+            pthread_join(devs, &result_ptr);
+			pthread_exit(NULL);
         }
     }
 
