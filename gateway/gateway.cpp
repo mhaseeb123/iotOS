@@ -63,6 +63,9 @@ typedef std::mutex LOCK;
 
 using namespace std;
 
+
+
+void change_mode(int inmode);
 int registerf(std::string ltype, std::string lname);
 
 std::string name[4] = {"temp", "motion", "bulb", "outlet"};
@@ -79,13 +82,13 @@ int states[2] = {OFF, OFF};
 LOCK motion_lock;
 LOCK bulb_lock;
 LOCK start_lock;
-
+LOCK mode_lock;
 
 int mode = HOME;
 
+
 void printstuff()
 {
-#ifdef DEBUG
     std::cout << "Registered: ";
         for (int i = 0; i < 4; i++)
         {
@@ -99,7 +102,6 @@ void printstuff()
                 std::cout << ips[i] << " ";
         }
         std::cout << std::endl;
-#endif
 }
 
 //change to update the state array by shifting long long.
@@ -108,28 +110,28 @@ long long query_state(int device_id)
     long long value;
     switch (device_id)
     {
-        case 0:
+        case TEMP:
             if (isRegistered[0] == 1 && ips[0] != "")
             {
                 rpc::client temp(ips[0], ports[0]);
                 value = temp.call("query_state", device_id).as<long long>();
             }
             break;
-        case 1:
+        case MOTION:
             if (isRegistered[1] == 1 && ips[1] != "")
             {
                 rpc::client motion(ips[1], ports[1]);
                 value = motion.call("query_state", device_id).as<long long>();
             }
             break;
-        case 2:
+        case BULB:
             if (isRegistered[2] == 1 && ips[2] != "")
             {
                 rpc::client bulb(ips[2], ports[2]);
                 value = bulb.call("query_state", device_id).as<long long>();
             }
             break;
-        case 3:
+        case OUTLET:
             if (isRegistered[3] == 1 && ips[3] != "")
             {
                 rpc::client outlet(ips[3], ports[3]);
@@ -138,6 +140,7 @@ long long query_state(int device_id)
             break;
         default:
             value = 0;
+            break;
     }
     return value;
 }
@@ -192,7 +195,10 @@ void TimerExpired()
 {
     bulb_lock.lock();
 
+#ifdef DEBUG
     cout << "Timer Expired " << endl;
+#endif
+
     if (states[BULB-2] == ON)
     {
         change_state(BULB, OFF);
@@ -201,8 +207,34 @@ void TimerExpired()
     bulb_lock.unlock();
 }
 
+void text_message(int sig)
+{
+    cout << endl << "    !!!INTRUDER ALERT !!!\n Info: Sensed motion in the house" << endl;
+    return;
+}
+
 void *UserEntry(void *arg)
 {
+    /* Wait for Smart Home initialization */
+	start_lock.lock();
+    start_lock.unlock();
+
+    int lmode = HOME;
+
+    /* Register the Intruder alert interrupt */
+	void (*prev_handler)(int);
+	prev_handler = signal(SIGINT, text_message);
+
+    while (true)
+    {
+        cout << endl << "Set the Mode \\> ";
+        cin >> lmode;
+        if (lmode >= HOME && lmode <= AWAY)
+        {
+            change_mode(lmode);
+        }
+    }
+
     return NULL;
 }
 
@@ -255,7 +287,7 @@ void *BulbManage(void *arg)
     {
         motion_lock.lock();
         bulb_lock.lock();
-        
+        mode_lock.lock();
         if (isRegistered[BULB] == 1)
         {
                 switch (mode)
@@ -265,12 +297,11 @@ void *BulbManage(void *arg)
                         {
                             change_state(BULB, ON);
                         }
-
                         UpdateTimer(HOMETIMER); // Reset the timer
                         break;
                         
                     case AWAY:
-                        //OMG. HELP. Intruder in the house.
+                        raise(SIGINT);  // Raise the alert
                         DisableTimer(); // Keep the timer off.
                         break;
                     default:
@@ -278,6 +309,7 @@ void *BulbManage(void *arg)
                 }
         }
 
+        mode_lock.unlock();
         bulb_lock.unlock();
     }
     
@@ -285,9 +317,27 @@ void *BulbManage(void *arg)
 }
 
 
-int change_mode(int inmode)
+void change_mode(int lmode)
 {
-    mode = inmode;
+    mode_lock.lock();
+
+    if (lmode != mode)
+    {
+        mode = lmode;
+        rpc::client cln(ips[MOTION], ports[MOTION]);
+        cln.call("change_mode", mode);
+    
+        if (mode == HOME)
+        {
+    	    UpdateTimer(HOMETIMER);
+        }
+        else if (mode == AWAY)
+        {
+            DisableTimer();
+        }
+    }
+
+    mode_lock.unlock();
 }
 
 STATUS main() 

@@ -25,6 +25,7 @@
 using namespace std;
 
 #define MOTIONTIME    2000
+#define AWAYTIME      5000
 
 /* Global Variables */
 string gateway_ip;
@@ -96,7 +97,7 @@ void change_mode(int inmode)
         case AWAY:
             mode = AWAY;
             modeoffset = 10;
-            (void)SetTimer(MOTIONTIME * 10000);
+            (void)SetTimer(AWAYTIME);
             break;
 
         case EXIT:
