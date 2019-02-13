@@ -88,7 +88,7 @@ int mode = HOME;
 
 void printHeader()
 {
-	cout << "**********************************\n";
+	cout << "\n**********************************\n";
 	cout << "*                                *\n";
 	cout << "* COP5614:  IoT and Smart Home   *\n";
 	cout << "* Muhammad Haseeb, Usman Tariq   *\n";
@@ -98,7 +98,7 @@ void printHeader()
 
 void askMode()
 {
-    printf("\n\n Set the Home Mode? (1= Home), (2 = Away), (0 = Exit) \n Current Mode: %d \\> ", mode);    
+    printf("\n\nSet the Home Mode? (1= Home), (2 = Away), (0 = Exit) \nCurrent Mode: %d \\> ", mode);    
     fflush(stdout);
 }
 
@@ -119,45 +119,21 @@ void printstuff()
         std::cout << std::endl;
 }
 
-//change to update the state array by shifting long long.
+
 long long query_state(int device_id)
 {
-    long long value;
-    switch (device_id)
-    {
-        case TEMP:
-            if (isRegistered[0] == 1 && ips[0] != "")
-            {
-                rpc::client temp(ips[0], ports[0]);
-                value = temp.call("query_state", device_id).as<long long>();
-            }
-            break;
-        case MOTION:
-            if (isRegistered[1] == 1 && ips[1] != "")
-            {
-                rpc::client motion(ips[1], ports[1]);
-                value = motion.call("query_state", device_id).as<long long>();
-            }
-            break;
-        case BULB:
-            if (isRegistered[2] == 1 && ips[2] != "")
-            {
-                rpc::client bulb(ips[2], ports[2]);
-                value = bulb.call("query_state", device_id).as<long long>();
-            }
-            break;
-        case OUTLET:
-            if (isRegistered[3] == 1 && ips[3] != "")
-            {
-                rpc::client outlet(ips[3], ports[3]);
-                value = outlet.call("query_state", device_id).as<long long>();
-            }
-            break;
-        default:
-            value = 0;
-            break;
-    }
-    return value;
+    long long value = 0;
+	
+	if (device_id > 3 || device_id < 0)
+		return 0;
+	
+	if (isRegistered[device_id] == 1 && ips[device_id] != "")
+	{
+		rpc::client cln(ips[device_id], ports[device_id]);
+		value = cln.call("query_state", device_id).as<long long>();
+	}
+	
+	return value;
 }
 
 void UpdateTimer(int msecs)
@@ -224,7 +200,7 @@ void TimerExpired()
 
 void text_message(int sig)
 {
-    cout << endl << endl << "    !!!INTRUDER ALERT !!!\n Info: Sensed motion in the house" << endl;
+    cout << endl << endl << "     !!!INTRUDER ALERT !!!\nInfo: Sensed motion in the house" << endl;
     askMode();
 
     return;
@@ -240,7 +216,6 @@ void *UserEntry(void *arg)
 
     /* Register the Intruder alert interrupt */
 	void (*prev_handler)(int);
-	prev_handler = signal(SIGINT, text_message);
 
     (void *) prev_handler;
 
@@ -249,10 +224,16 @@ void *UserEntry(void *arg)
         askMode();
         cin >> lmode;
 
-        if (lmode >= HOME && lmode <= AWAY)
+        if (lmode == HOME)
         {
+            signal(SIGINT, SIG_DFL);
             change_mode(lmode);
         }
+		else if (lmode == AWAY)
+		{
+            prev_handler = signal(SIGINT, text_message);
+			change_mode(lmode);
+		}
         else if (lmode == EXIT)
         {
             signal(SIGINT, SIG_DFL);
@@ -373,6 +354,55 @@ void change_mode(int lmode)
     mode_lock.unlock();
 }
 
+STATUS test_system()
+{
+	STATUS status = SUCCESS;
+	int count = 0;
+	for (int i = 0; i < 4; i++)
+	{
+		if (isRegistered[i] == 1)
+			count++;
+	}
+	if (count == 4)
+	{
+		std::cout << "\nAll sensors and devices are registered." << std::endl;
+		std::cout << "\nPerforming System Test...\n" << std::endl;
+		std::cout << "Information:" << std::endl;
+	}
+	else
+	{
+		std::cout << "Error: Some sensors or devices might not have been registered or configured properly. Please contact our customer support for further assistance." << std::endl; 
+		status = FAILURE;
+	}
+	
+	for (int i = 0; i < 4; i++)
+	{
+		std::cout << name[i] << ":\t" << ips[i] << "\t" << ports[i] << std::endl;
+	}
+	
+	std::cout << "\nChecking Status:" << std::endl;
+	
+	long long status_and_id;
+	int device_id;
+	for (int i = 0; i < 4; i++)
+	{
+		status_and_id = query_state(i);
+		device_id = (int)(status_and_id >> 32);
+		
+		if (device_id == i)
+		{
+			std::cout << name[i] << " " << type[i] << " status:\tOK" << std::endl;
+		}
+		else
+		{
+			status = FAILURE;
+			std::cout << name[i] << " " << type[i] << "didn't respond as expected" << std::endl;
+		}
+	}
+	
+	return status;
+}
+
 STATUS main() 
 {
     STATUS status = SUCCESS;
@@ -472,6 +502,11 @@ STATUS main()
     /* Run the server loop */
     srv.async_run(4);
     
+	/* Run system test */
+	start_lock.lock();
+	start_lock.unlock();
+	status = test_system();
+	
     /* Create pthreads */
     if (status == SUCCESS)
     { 
