@@ -197,6 +197,8 @@ void *ServerEntry(void *arg)
 
     /* Wait for powerdown signal */
     mode_lock.lock();
+    
+    return NULL;
 }
 
 /*

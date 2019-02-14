@@ -1,5 +1,5 @@
 BUILD_MODE = RELEASE
-CXXFLAGS = -Wall -std=c++11
+CXXFLAGS = -Wall -std=c++11 -Wno-unused-but-set-variable
 CXX = g++
 
 PROJECT_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))

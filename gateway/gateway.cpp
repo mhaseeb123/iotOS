@@ -26,9 +26,9 @@
 using namespace std;
 
 /* Database of devices and sensors */
-std::string name[4] = {"temp", "motion", "bulb", "outlet"};
-std::string type[4] = {"sensor", "sensor", "device", "device"};
-std::string *ips;
+ string name[4] = {"temp", "motion", "bulb", "outlet"};
+ string type[4] = {"sensor", "sensor", "device", "device"};
+ string *ips;
 int ports[4] = {0};
 
 /* Global Variables */
@@ -45,6 +45,7 @@ LOCK motion_lock;
 LOCK bulb_lock;
 LOCK start_lock;
 LOCK mode_lock;
+LOCK test_lock;
 
 /* Automation Mode */
 int mode = HOME;
@@ -57,12 +58,12 @@ int mode = HOME;
  */
 void printHeader()
 {
-	cout << "\n**********************************\n";
-	cout << "*                                *\n";
-	cout << "* COP5614:  IoT and Smart Home   *\n";
-	cout << "* Muhammad Haseeb, Usman Tariq   *\n";
-	cout << "*                                *\n";
-	cout << "**********************************\n\n";
+ cout << "\n**********************************\n";
+ cout << "*                                *\n";
+ cout << "* COP5614:  IoT and Smart Home   *\n";
+ cout << "* Muhammad Haseeb, Usman Tariq   *\n";
+ cout << "*                                *\n";
+ cout << "**********************************\n\n";
 }
 
 /* FUNCTION: askMode
@@ -85,19 +86,19 @@ void askMode()
  */
 void printstuff()
 {
-    std::cout << "Registered: ";
+     cout << "Registered: ";
         for (int i = 0; i < 4; i++)
         {
-            std::cout << isRegistered[i] << " ";
+             cout << isRegistered[i] << " ";
         }
-        std::cout << std::endl;
-        std::cout << "IP: ";
+         cout <<  endl;
+         cout << "IP: ";
         for (int i = 0; i < 4; i++)
         {
             if (ips[i] != "")
-                std::cout << ips[i] << " ";
+                 cout << ips[i] << " ";
         }
-        std::cout << std::endl;
+         cout <<  endl;
 }
 
 /* FUNCTION: query_state
@@ -110,16 +111,16 @@ long long query_state(int device_id)
 {
     long long value = 0;
 
-	if (device_id > 3 || device_id < 0)
-		return 0;
+ if (device_id > 3 || device_id < 0)
+  return 0;
 
-	if (isRegistered[device_id] == 1 && ips[device_id] != "")
-	{
-		rpc::client cln(ips[device_id], ports[device_id]);
-		value = cln.call("query_state", device_id).as<long long>();
-	}
+ if (isRegistered[device_id] == 1 && ips[device_id] != "")
+ {
+  rpc::client cln(ips[device_id], ports[device_id]);
+  value = cln.call("query_state", device_id).as<long long>();
+ }
 
-	return value;
+ return value;
 }
 
 /* FUNCTION: UpdateTimer
@@ -130,8 +131,6 @@ long long query_state(int device_id)
  */
 void UpdateTimer(int msecs)
 {
-    STATUS status = SUCCESS;
-
     motion_timer.it_value.tv_sec = msecs / 1000;
     motion_timer.it_value.tv_usec = (msecs * 1000) % 1000000;
     motion_timer.it_interval = motion_timer.it_value;
@@ -195,7 +194,7 @@ void TimerExpired()
 {
     int ack = SUCCESS;
 
-		/* Acquire bulb control lock */
+  /* Acquire bulb control lock */
     bulb_lock.lock();
 
 #ifdef DEBUG
@@ -212,10 +211,10 @@ void TimerExpired()
     bulb_lock.unlock();
 
     /* Check for acknowledgement */
-		if (ack != SUCCESS)
+  if (ack != SUCCESS)
     {
-        cout << "ERROR: change_state for bulb failed with error code: " << ack << endl;
-		}
+        cout << "ERROR: change_state for bulb failed with error code:\t" << ack << endl;
+  }
 }
 
 /* FUNCTION: text_message
@@ -241,13 +240,10 @@ void text_message(int sig)
 void *UserEntry(void *arg)
 {
     /* Wait for Smart Home initialization */
-	  start_lock.lock();
+    start_lock.lock();
     start_lock.unlock();
     int lmode = HOME;
     void (*prev_handler)(int);
-
-    /* Avoid compiler warning */
-    (void *) prev_handler;
 
     while (true)
     {
@@ -258,21 +254,21 @@ void *UserEntry(void *arg)
         /* User is home */
         if (lmode == HOME)
         {
-					  /* Disarm the intruder alert */
+            /* Disarm the intruder alert */
             signal(SIGINT, SIG_DFL);
-						/* Change mode to Home (& Winters) */
+            /* Change mode to Home (& Winters) */
             change_mode(lmode);
         }
         /* User is going on vacation */
         else if (lmode == AWAY)
-				{
-					  /* Arm the intruder alert */
+        {
+            /* Arm the intruder alert */
             prev_handler = signal(SIGINT, text_message);
-						/* Change mode to Away (& Spring break) */
+            /* Change mode to Away (& Spring break) */
             change_mode(lmode);
-				}
+        }
 
-				/* Shutdown Automation */
+        /* Shutdown Automation */
         else if (lmode == EXIT)
         {
             signal(SIGINT, SIG_DFL); // Disarm the intruder alert
@@ -294,7 +290,7 @@ void *HeatManage(void *arg)
 {
     int ack = SUCCESS;
 
-		/* Wait for automation start */
+  /* Wait for automation start */
     start_lock.lock();
     start_lock.unlock();
 
@@ -306,7 +302,7 @@ void *HeatManage(void *arg)
         /* Wait for 5 seconds */
         sleep(5);
 
-				/* Query the current temperature */
+        /* Query the current temperature */
         temp_and_id = query_state(TEMP);
         device_id = (int)(temp_and_id >> 32);
         temperature = (float)(temp_and_id & 0xFFFFFFFF);
@@ -335,10 +331,10 @@ void *HeatManage(void *arg)
             }
         }
         /* Report if acknowledgement failed */
-				if (ack != SUCCESS)
-				{
-            cout << "ERROR: change_state failed for Outlet with code: " << ack << endl;
-				}
+    if (ack != SUCCESS)
+    {
+            cout << "ERROR: change_state failed for Outlet with code:\t" << ack << endl;
+    }
     }
 
     return NULL;
@@ -352,6 +348,7 @@ void *HeatManage(void *arg)
  */
 void *BulbManage(void *arg)
 {
+    STATUS ack = SUCCESS;
     start_lock.lock();
     start_lock.unlock();
 
@@ -360,7 +357,7 @@ void *BulbManage(void *arg)
         /* Consume the motion sensor lock */
         motion_lock.lock();
 
-				/* Acquire the mode and bulb management locks */
+        /* Acquire the mode and bulb management locks */
         bulb_lock.lock();
         mode_lock.lock();
 
@@ -369,7 +366,7 @@ void *BulbManage(void *arg)
                 switch (mode)
                 {
                     case HOME:
-										    /* Turn bulb ON if OFF */
+                        /* Turn bulb ON if OFF */
                         if (states[BULB-2]==OFF)
                         {
                             ack = change_state(BULB, ON);
@@ -386,15 +383,15 @@ void *BulbManage(void *arg)
                 }
         }
 
-				/* Release the mode and bulb management locks */
+        /* Release the mode and bulb management locks */
         mode_lock.unlock();
         bulb_lock.unlock();
 
         /* Check if failed */
-				if (ack != SUCCESS)
-				{
-						cout << "ERROR: change_state failed for bulb with code: " << ack << endl;
-				}
+        if (ack != SUCCESS)
+        {
+            cout << "ERROR: change_state failed for bulb with code:\t" << ack << endl;
+        }
     }
 
     return NULL;
@@ -408,7 +405,7 @@ void *BulbManage(void *arg)
  */
 void change_mode(int lmode)
 {
-	  /* Acquire mode change lock */
+   /* Acquire mode change lock */
     mode_lock.lock();
 
     if (lmode != mode)
@@ -428,10 +425,10 @@ void change_mode(int lmode)
             DisableTimer(); // Disable motion timer
         }
         else if (lmode == EXIT)
-		    {
+      {
             rpc::client cln2(ips[OUTLET], ports[OUTLET]);
             cln2.call("powerdown"); // Powerdown
-		    }
+      }
     }
     /* Release mode change lock */
     mode_lock.unlock();
@@ -446,72 +443,73 @@ void change_mode(int lmode)
 STATUS test_system()
 {
     STATUS status = SUCCESS;
-	  int count = 0;
-		long long status_and_id;
-		int device_id;
+    int count = 0;
+    long long status_and_id;
+    int device_id;
 
     /* Test device registration */
-	  for (int i = 0; i < 4; i++)
-	  {
+    for (int i = 0; i < 4; i++)
+    {
         if (isRegistered[i] == 1)
             count++;
     }
 
     if (count == 4)
     {
-        std::cout << "\nAll sensors and devices are registered." << std::endl;
-        std::cout << "\nPerforming System Test...\n" << std::endl;
-        std::cout << "Information:" << std::endl;
-		}
-		else
-		{
-        std::cout << "Error: Some sensors or devices might not have been registered or configured properly. "
-		                 "Please contact our customer support for further assistance! :p" << std::endl;
-		    status = FAILURE;
-	  }
-
-    for (int i = 0; i < 4; i++)
-		{
-        std::cout << name[i] << ":\t" << ips[i] << "\t" << ports[i] << std::endl;
+         cout << "\nAll sensors and devices are registered." <<  endl;
+         cout << "\nPerforming System Test...\n" <<  endl;
+         cout << "Information:" <<  endl;
+    }
+    else
+    {
+         cout << "Error: Some sensors or devices might not have been registered or configured properly. "
+                   "Please contact our customer support for further assistance! :p" <<  endl;
+        status = FAILURE;
     }
 
-		/* Test the query state for heartbeat */
-    std::cout << "\nTesting query_state:" << std::endl;
+    for (int i = 0; i < 4; i++)
+    {
+         cout << name[i] << ":\t" << ips[i] << "\t" << ports[i] <<  endl;
+    }
+
+    /* Test the query state for heartbeat */
+     cout << "\nTesting query_state:" <<  endl;
 
     for (int i = 0; i < 4; i++)
     {
         status_and_id = query_state(i);
         device_id = (int)(status_and_id >> 32);
 
-				if (device_id == i)
-				{
-            std::cout << name[i] << " " << type[i] << " status:\tOK" << std::endl;
-				}
-				else
-				{
+    if (device_id == i)
+    {
+             cout << name[i] << " " << type[i] << " status:\tOK" <<  endl;
+    }
+    else
+    {
             status = FAILURE;
-						std::cout << name[i] << " " << type[i] << " didn't respond as expected" << std::endl;
+       cout << name[i] << " " << type[i] << " didn't respond as expected" <<  endl;
         }
     }
 
-		/* Test remote control for devices */
-    std::cout << "\nTesting change_state:" << std::endl;
+  /* Test remote control for devices */
+     cout << "\nTesting change_state:" << endl;
 
     for (int state = OFF; state <= ON; state ++)
-		{
-			  cout << "Turning devices: " << state << endl;
+    {
+        cout << "Turning devices:\t" << state << endl;
+
         for (int i = BULB; i <= OUTLET; i++)
-				{
+        {
             status = change_state(i, state);
 
-						if (status == SUCCESS)
-						{
-						    std::cout << name[i-1] << " " << type[i-1] << " status:\tOK" << std::endl;
-						}
-						else
-						{
-						    std::cout << name[i] << " " << type[i] << " didn't respond as expected. Error code: " << status << std::endl;
-						}
+            if (status == SUCCESS)
+            {
+                 cout << name[i] << " " << type[i] << " status:\tOK" <<  endl;
+            }
+            else
+            {
+                 cout << name[i] << " " << type[i] << " didn't respond as expected. Error code:\t" << status <<  endl;
+            }
         }
     }
 
@@ -530,7 +528,7 @@ STATUS main()
     STATUS status = SUCCESS;
 
     /* New strings for sensor and device IPs */
-    ips = new std::string[4];
+    ips = new  string[4];
     void *result_ptr = NULL;
 
     /* pthreads */
@@ -541,9 +539,9 @@ STATUS main()
     /* Lock the Motion Sensor and Automation */
     motion_lock.lock();
     start_lock.lock();
-		test_lock.lock();
+  test_lock.lock();
 
-	/* Print Header */
+ /* Print Header */
     printHeader();
 
     cout << "GATEWAY: Waiting for Sensors and Devices...";
@@ -565,7 +563,7 @@ STATUS main()
 #endif
 
     /* Bind the Register Function */
-    srv.bind("registerf", [](std::string ltype, std::string lname, std::string IP, int port)
+    srv.bind("registerf", []( string ltype,  string lname,  string IP, int port)
     {
 #ifdef DEBUG
         cout << "registerf called " <<endl;
@@ -600,7 +598,7 @@ STATUS main()
            if (devs_reg == 4)
            {
                 /* Let's test the smart home */
-								test_lock.unlock();
+        test_lock.unlock();
 #ifdef DEBUG
                 cout << "Starting Home " <<endl;
 #endif
@@ -627,15 +625,15 @@ STATUS main()
     /* Run the server loop */
     srv.async_run(4);
 
-	/* Run system test */
+ /* Run system test */
     test_lock.lock();
     status = test_system();
 
-		if (status == SUCCESS)
-		{
-			  /* All set. Let's start the Smart Home */
+  if (status == SUCCESS)
+  {
+     /* All set. Let's start the Smart Home */
         start_lock.unlock();
-		}
+  }
 
     /* Create User Task */
     if (status == SUCCESS)
@@ -647,7 +645,7 @@ STATUS main()
             printf("Error: Task Creation Failed\nABORT!!\n\n");
            // status = ERR_THREAD_CREATION_FAILED;
         }
-	 }
+  }
 
     /* Create Bulb Management Task */
     if (status == SUCCESS)
