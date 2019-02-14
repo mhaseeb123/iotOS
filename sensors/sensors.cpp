@@ -2,7 +2,7 @@
  * The MIT License (MIT)
  * Copyright (c) 2019 Muhammad Haseeb, Usman Tariq
  *      COP5614: Operating Systems | SCIS FIU
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -11,7 +11,7 @@
  * furnished to do so, subject to the following conditions:
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,84 +31,108 @@ using namespace std;
 string gateway_ip;
 int gateway_port;
 
+/* Store the device ip and port */
 string sensor_ip;
-int sensor_port = 6060;
+const int sensor_port = 6060;
 
 MODE mode = HOME;
 bool motion = false;
 float temp = 0.5;
 float modeoffset = 0;
 
-TIMER motion_timer; /* Timer for motion updates */
+/* Timer for motion updates */
+TIMER motion_timer;
 
+/* Sensor IDs assigned by Gateway */
 int msensor = ERR_SENSOR_NOT_REGISTERED;
 int tsensor = ERR_SENSOR_NOT_REGISTERED;
 
+/* Locks for thread synchronization */
 LOCK offset_lock;
 LOCK motion_lock;
 
-// This functions from: https://www.geeksforgeeks.org/c-program-display-hostname-ip-address/
+/* FUNCTION: getIPAddress
+ * DESCRIPTION: Returns my IP.
+ * Taken from https://www.geeksforgeeks.org/c-program-display-hostname-ip-address/
+ *
+ * @params: none
+ * @returns: my IP address
+ */
 string getIPAddress()
 {
     char hostbuffer[256];
-    char *IPbuffer; 
-    struct hostent *host_entry; 
-    int hostname; 
-  
-    // To retrieve hostname 
-    hostname = gethostname(hostbuffer, sizeof(hostbuffer)); 
+    char *IPbuffer;
+    struct hostent *host_entry;
+    int hostname;
 
-    if (hostname == -1) 
-    { 
-        perror("gethostname"); 
-        exit(1); 
-    }  
+    /* Retrieve hostname */
+    hostname = gethostname(hostbuffer, sizeof(hostbuffer));
 
-    // To retrieve host information 
+    if (hostname == -1)
+    {
+        perror("gethostname");
+        exit(1);
+    }
+
+    /* Retrieve host information */
     host_entry = gethostbyname(hostbuffer);
 
-    if (host_entry == NULL) 
-    { 
-        perror("gethostbyname"); 
-        exit(1); 
+    if (host_entry == NULL)
+    {
+        perror("gethostbyname");
+        exit(1);
     }
-    
-    // To convert an Internet network 
-    // address into ASCII string 
-    IPbuffer = inet_ntoa(*((struct in_addr*) 
-                           host_entry->h_addr_list[0]));
-    
-    string IP(IPbuffer);
-    
-    return IP;
-} 
 
+    /* Convert an Internet network
+     * address into ASCII string */
+    IPbuffer = inet_ntoa(*((struct in_addr*)
+                           host_entry->h_addr_list[0]));
+
+    string IP(IPbuffer);
+
+    return IP;
+}
+
+/* FUNCTION: change_mode
+ * DESCRIPTION: change_mode for sensors and devices
+ *
+ * @params: new mode
+ * @returns: none
+ */
 void change_mode(int inmode)
 {
+    /* Acquire mode update lock */
     offset_lock.lock();
 
     switch (inmode)
     {
         case HOME:
             mode = HOME;
+
+            /* User is home. Winter time, temperature varies from 0 to 3 C */
             modeoffset = 0;
             break;
 
         case AWAY:
             mode = AWAY;
+
+            /* Spring time, temperature now varies from 10 to 13 C instead */
             modeoffset = 10;
+
+            /* User is away, set the motion timer to 5 sec */
             (void)SetTimer(AWAYTIME);
             break;
 
         case EXIT:
             mode = EXIT;
-            exit(0);
+            exit(0); // Shutdown
             break;
 
         default:
             break;
     }
 
+    /* Release mode update lock */
     offset_lock.unlock();
 }
 
@@ -125,10 +149,17 @@ int Random_Number()
     return rand();
 }
 
+/* FUNCTION: SetTimer
+ * DESCRIPTION: Reset or Update timer
+ *
+ * @params: none
+ * @returns: timer value in milliseconds
+ */
 STATUS SetTimer(int msecs)
 {
     STATUS status = SUCCESS;
 
+    /* Update Timer */
     motion_timer.it_value.tv_sec = msecs / 1000;
     motion_timer.it_value.tv_usec = (msecs * 1000) % 1000000;
     motion_timer.it_interval = motion_timer.it_value;
@@ -141,6 +172,7 @@ STATUS SetTimer(int msecs)
 
     return status;
 }
+
 /*
  * FUNCTION: report_state
  * DESCRIPTION: Entry function for Server Task
@@ -171,14 +203,17 @@ void *report_state(void *arg)
 
     while (true)
     {
+        /* Wait for timer expiration */
         motion_lock.lock();
 
-        /* Send data */
+        /* Randomly generate motion/no motion */
         bool val = (Random_Number() & 0x1) == 0 ? 1.0 : 0.0;
 
         if (val==true)
         {
             cout << "Motion Detected " << endl;
+
+            /* Push motion sense data */
             client.call("report_state", msensor, val);
         }
     }
@@ -187,22 +222,37 @@ void *report_state(void *arg)
     return NULL;
 }
 
+/* FUNCTION: query_state
+ * DESCRIPTION: The query_state for sensors
+ *
+ * @params: device id
+ * @returns: device_id and state
+ */
 long long query_state(int device_id)
 {
+    /* Random number for temperature of motion */
     float res = (float) Random_Number();
 
+    /* Check the device id */
     if (device_id == tsensor)
     {
+        /* Acquire offset lock */
         offset_lock.lock();
+
+        /* Report temperature between 0 and 3 */
         res = (res / (float)(RAND_MAX / 3)) + modeoffset;
+
+        /* Release offset lock */
         offset_lock.unlock();
     }
     else if (device_id == msensor)
     {
+        /* If even then motion, else no motion (50 % prob) */
         res = (Random_Number() & 0x1) == 0 ? 1 : 0;
     }
     else
     {
+        /* Set to 0xffffffff */
         res = -1.0;
     }
 
@@ -218,7 +268,7 @@ long long query_state(int device_id)
 
 void Update()
 {
-    /* Release Mutex here */
+    /* Release the motion mutex here */
     motion_lock.unlock();
 }
 
@@ -231,22 +281,29 @@ void Update()
  */
 void *Server_Entry(void *arg)
 {
-    // Creating a server that listens on port 8080
+    /* Creating a server */
     rpc::server srv(sensor_port);
 
+    /* Register calls */
     cout << "Registering calls \n";
 
     srv.bind("query_state", &query_state);
     srv.bind("change_mode", &change_mode);
 
-    // Run the server loop.
+    /* Run the server loop. */
     srv.run();
 
     /* No results required */
     return NULL;
 }
 
-/* Main Function */
+/*
+ * FUNCTION: main
+ * DESCRIPTION: Main Function
+ *
+ * @params: args: gateway ip and port
+ * @returns: status of execution
+ */
 STATUS main(int argc, char **argv)
 {
     STATUS status = SUCCESS;
@@ -255,7 +312,7 @@ STATUS main(int argc, char **argv)
     pthread_t thread1;
     pthread_t thread2;
 
-    /* Check if number of tosses passed as parameter */
+    /* Check if gateway ip and port passed */
     if (argc < 3)
     {
         cout << "ERROR: Gateway IP or Port Number not specified\n";
@@ -264,6 +321,7 @@ STATUS main(int argc, char **argv)
         status = ERR_INVLD_ARGS;
     }
 
+    /* Set gateway IP and port */
     if (status == SUCCESS)
     {
         gateway_ip = argv[1];
@@ -283,7 +341,7 @@ STATUS main(int argc, char **argv)
 
     if (status == SUCCESS)
     {
-        /* Provide a random seed */
+        /* Provide a random seed to RNG */
         srand((int) (time(0) * 23) % (1 + 5) + (10 + 1) * 29 - time(0) + (int) time(0) % (5 + 1) * time(0));
 
         /* Upon SIGALRM, call Update_Temperature() */
@@ -338,7 +396,7 @@ STATUS main(int argc, char **argv)
         pthread_join(thread2, &result_ptr);
 
         pthread_cancel(thread1);
-        
+
         //pthread_join(thread1, &result_ptr);
 
         /* All set - Exit now */

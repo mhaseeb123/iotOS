@@ -21,10 +21,9 @@
  * SOFTWARE.
  */
 
-#ifndef SENSORS_H_
-#define SENSORS_H_
+#ifndef GATEWAY_H_
+#define GATEWAY_H_
 
- /* Include necessary headers */
 #include <iostream>
 #include <cstdlib>
 #include <pthread.h>
@@ -42,34 +41,46 @@
 #include "rpc/server.h"
 #include "rpc/client.h"
 
-/* Status Codes */
-#define SUCCESS                          0
-#define ERR_NULL_PARAM                  -1000
-#define ERR_THREAD_NUM                  -1001
-#define ERR_UNINIT_LOCK                 -1002
-#define ERR_TIMER_CREATION_FAILED       -1003
-#define ERR_THREAD_CREATION_FAILED      -1004
-#define ERR_INVLD_ARGS                  -1005
-#define ERR_INVLD_IP                    -1006
-#define ERR_DEV_NOT_REGD                -1007
+#define TEMP           0
+#define MOTION         1
+#define BULB           2
+#define OUTLET         3
 
-/* Defined by the Gateway */
-#define ERR_SENSOR_NOT_REGISTERED        4
+#define SUCCESS        0
+#define FAILURE        1
 
-/* Macros */
-#define HOME                             1 << 0
-#define AWAY                             1 << 1
-#define EXIT                             0
+#define OFF            0
+#define ON             1
 
-/* Typedefs */
+#define HOMETIMER      2000
+#define TEMPSCALE      1000
+
 typedef int STATUS;
 typedef unsigned int MODE;
 typedef struct itimerval TIMER;
 typedef std::mutex LOCK;
 
-/* Function Prototypes */
-std::string getIPAddress();
-long long query_state(int device_id);
-STATUS change_state(int device_id, int new_state);
+#define HOME           1 << 0
+#define AWAY           1 << 1
+#define EXIT           0
 
-#endif /* SENSORS_H_ */
+/* Function Prototypes */
+void change_mode(int inmode);
+int registerf(std::string ltype, std::string lname);
+void printHeader();
+void askMode();
+void printstuff();
+long long query_state(int device_id);
+void UpdateTimer(int msecs);
+void DisableTimer();
+int change_state(int device_id, int state);
+void TimerExpired();
+void text_message(int sig);
+void *UserEntry(void *arg);
+void *HeatManage(void *arg);
+void *BulbManage(void *arg);
+void change_mode(int lmode);
+STATUS test_system();
+STATUS main();
+
+#endif /* GATEWAY_H_ */
