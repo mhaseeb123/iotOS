@@ -1,5 +1,5 @@
-# iotOS
-COP5601: Operating System Assignment # 1
+# COP5601: Operating System Assignment # 1
+## Authors: Muhammad Haseeb and Usman Tariq
 # Requirements
 1.	cmake, g++ and rpc libary are required to run this project.
 2.	g++ can be installed by using the command:
