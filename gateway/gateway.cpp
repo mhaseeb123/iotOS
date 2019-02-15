@@ -23,7 +23,7 @@
 
 #include "gateway.h"
 
-#define LATENCY
+//#define LATENCY
 
 using namespace std;
 
