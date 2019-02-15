@@ -276,10 +276,10 @@ STATUS main(int argc, char **argv)
 
         if (status == SUCCESS)
         {
-            cout << "SUCCESS \n";
-
             cout << "Registering Smart Outlet...\n";
-
+            
+            cout << "SUCCESS \n";
+            
             outletid = client.call("registerf", "device", "outlet", devices_ip, devices_port).as<int>();
 
             if (outletid == ERR_SENSOR_NOT_REGISTERED)
