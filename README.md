@@ -17,7 +17,7 @@ The program was tested on signle machine and on a Three-Machine network on the g
 4.	Three .exe files will be generated i.e. gateway.exe, sensors.exe, and devices.exe
 5.	Run gateway.exe file. The gateway server will start and wait for devices and sensors to register. Leave the server running in the separate terminal.
 6.	Open two new terminals. In the first one run the command "./devices.exe 127.0.0.1 8080" and in the second one run "./sensor.exe 127.0.0.1 8080".
-7.	Once the sensors and devices register successfully, the automation process will start.
+7.	The order of executing files i.e. gateway.exe and then devices/sensors.exe must be followed for the execution of the syste. Once the sensors and devices register successfully, the automation process will start.
 8.	On the gateway terminal the user has the option to switch between HOME and AWAY mode or simply EXIT.
 
 ## Distributed System
@@ -28,5 +28,5 @@ The program was tested on signle machine and on a Three-Machine network on the g
 5.	On gateway, run "make gateway.exe". On sensors, run "make sensors.exe", and on devices run "make devices.exe".
 6.	Once the compilatoin is successful, run the corresponding files on each instances:
 On gateway, run "./gateway.exe". On devices, run "./devices.exe <gateway IP> 8080". On sensors, run "./sensors.exe <gateway IP> 8080".
-7.	This will start the automation process in HOME mode.
+7.	The above mentioned order of executing files must be followed for the proper functionality of the system. This will start the automation process in HOME mode.
 8.	On the gateway console, user can switch between HOME and AWAY mode or EXIT.
