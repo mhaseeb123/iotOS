@@ -23,6 +23,8 @@
 
 #include "gateway.h"
 
+#define LATENCY
+
 using namespace std;
 
 /* Database of devices and sensors */
@@ -111,16 +113,22 @@ long long query_state(int device_id)
 {
     long long value = 0;
 
- if (device_id > 3 || device_id < 0)
-  return 0;
+    if (device_id > 3 || device_id < 0)
+        return 0;
 
- if (isRegistered[device_id] == 1 && ips[device_id] != "")
- {
-  rpc::client cln(ips[device_id], ports[device_id]);
-  value = cln.call("query_state", device_id).as<long long>();
- }
+    if (isRegistered[device_id] == 1 && ips[device_id] != "")
+    {
+        rpc::client cln(ips[device_id], ports[device_id]);
+        auto start   = chrono::system_clock::now();
+        value = cln.call("query_state", device_id).as<long long>();
+        auto end   = chrono::system_clock::now();
+#ifdef LATENCY
+        chrono::duration<double> elapsed_seconds = end - start;
+        std::cout << "Latency: " << elapsed_seconds.count() << std::endl;
+#endif		
+    }
 
- return value;
+    return value;
 }
 
 /* FUNCTION: UpdateTimer
