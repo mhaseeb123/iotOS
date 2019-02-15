@@ -27,6 +27,6 @@ The program was tested on signle machine and on a Three-Machine network on the g
 4.	cd to the iotOS folder.
 5.	On gateway, run "make gateway.exe". On sensors, run "make sensors.exe", and on devices run "make devices.exe".
 6.	Once the compilatoin is successful, run the corresponding files on each instances:
-On gateway, run "./gateway.exe". On devices, run "./devices.exe 10.142.0.5 8080". On sensors, run "./sensors.exe 10.142.0.5 8080".
+On gateway, run "./gateway.exe". On devices, run "./devices.exe <gateway IP> 8080". On sensors, run "./sensors.exe <gateway IP> 8080".
 7.	This will start the automation process in HOME mode.
 8.	On the gateway console, user can switch between HOME and AWAY mode or EXIT.
