@@ -26,7 +26,7 @@ using namespace std;
 
 #define MOTIONTIME    1000
 #define AWAYTIME      5000000
-#define DOORTIME      5000
+#define DOORTIME      8
 
 /* Global Variables */
 string gateway_ip;
@@ -41,6 +41,7 @@ int motion = MOTIONTIME;
 bool door = false;
 float temp = 0.5;
 float modeoffset = 0;
+bool bari = false;
 
 /* Timer for motion updates */
 TIMER motion_timer;
@@ -107,14 +108,19 @@ void change_mode(int inmode)
 {
     /* Acquire mode update lock */
     offset_lock.lock();
-
+	
+	cout << "Change Mode to = " << inmode << endl;
+	
     switch (inmode)
     {
         case HOME:
 
             mode = HOME;
+			bari=false;
 
             /* Winter time, temperature now varies from 0 to 2C */
+			motion = MOTIONTIME;
+			(void)SetTimer(MOTIONTIME);
             modeoffset = 0;
             
             break;
@@ -122,11 +128,13 @@ void change_mode(int inmode)
         case AWAY:
 
             mode = AWAY;
+		    bari=true;
 
             /* Spring time, temperature now varies from 10 to 13 C instead */
             modeoffset = 10;
 
             /* User is away, set the motion timer to 5 sec */
+			motion = AWAYTIME;
             (void)SetTimer(AWAYTIME);
             break;
 
@@ -215,8 +223,8 @@ void *report_state(void *arg)
         /* Wait for timer expiration */
         motion_lock.lock();
 
-        /* Randomly generate motion/no motion */
-        bool val = (Random_Number() % 100) < 70 ? true : false;
+        /* Randomly generate motion with 60% probability */
+        bool val = (Random_Number() % 100) < 60 ? true : false;
 
         if (val==true)
         {
@@ -238,7 +246,7 @@ void *report_state(void *arg)
  * @params: args: pointer to input arguments
  * @returns: pointer to any results
  */
-void *door(void *arg)
+void *doorf(void *arg)
 {
     // Creating a client that connects to the localhost on port 8080
     cout << "\nConnecting to Gateway...\n";
@@ -257,7 +265,7 @@ void *door(void *arg)
         return NULL;
     }
     
-    if (ksensor == ERR_SENSOR_NOT_REGISTERED)
+    if (psensor == ERR_SENSOR_NOT_REGISTERED)
     {
         cout << "Keychain Registration Failed..\n";
         return NULL;
@@ -281,25 +289,36 @@ void *door(void *arg)
             /* Check if door state changed */
             door = val;
 
+			/* Check if User is AWAY then 
+               randomize between user and 
+               intruder
+            */
+			offset_lock.lock();
+            
+			if (bari == true)
+            {
+	            /* Since door was opened and closed */
+                /* Change motion timer settings */
+				if (motion == AWAYTIME)
+				{
+					motion = MOTIONTIME;
+				}
+				if (val2 == true)
+				{
+					cout << "Keychain Reported " << endl;
+			
+					client.call("report_state", psensor, val2);
+				}  
+			}
+			
+			offset_lock.unlock();
+			
+            cout << "Door Opened " << endl;
+
             /* Open the door */
             client.call("report_state", dsensor, val);
             
-            cout << "Door Opened " << endl;
-            
-            sleep(0.1);
-
-            /* Check if User is AWAY then 
-               randomize between user and 
-			   intruder
-			*/
-            offset_lock.lock();
-            
-            if (mode == AWAY)
-            {
-                client.call("report_state", psensor, val2);
-            }
-
-            offset_lock.unlock();
+			sleep(1);
 
             /* Close the door */
             client.call("report_state", dsensor, false);
@@ -307,17 +326,6 @@ void *door(void *arg)
             cout << "Door Closed " << endl;
             
             door = val;
-            
-            /* Since door was opened and closed */
-            /* Change motion timer settings */
-            if (motion == MOTIONTIME)
-            {
-                motion = AWAYTIME;
-            }
-            else
-            {
-                motion = MOTIONTIME;
-            }
             
             (void)SetTimer(motion);
         }
@@ -343,12 +351,13 @@ long long query_state(int device_id)
     {
         /* Acquire offset lock */
         offset_lock.lock();
-        /* Mux device_id */
-        cout << "Temperature Reported " << res << endl;
 
         /* Report temperature between 0 and 3 */
         res = (res / (float)(RAND_MAX / 3)) + modeoffset;
         
+        /* Mux device_id */
+        cout << "Temperature Reported " << res << endl;
+
         /* Scale the temperature readings to integer */
         res *= TEMPSCALE;
 
@@ -501,7 +510,7 @@ STATUS main(int argc, char **argv)
     if (status == SUCCESS)
     {
         printf("Main Task: Creating DSensor Task\n");
-        status = pthread_create(&thread3, NULL, &door, NULL);
+        status = pthread_create(&thread3, NULL, &doorf, NULL);
         if (status != SUCCESS)
         {
             printf("Error: DSensor Task Creation Failed\nABORT!!\n\n");

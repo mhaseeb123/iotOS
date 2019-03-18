@@ -40,6 +40,8 @@ static int isRegistered[6] = {0};
 /* Timer and states */
 TIMER motion_timer;
 float temperature = 1.0;
+bool doorstatus = false;
+bool authenticated = true;
 int states[2] = {OFF, OFF};
 
 /* Locks for synchronization */
@@ -76,8 +78,8 @@ void printHeader()
  */
 void askMode()
 {
-    printf("\n\nSet the Home Mode? (1= Home), (2 = Away), (0 = Exit) \nCurrent Mode: %d \\> ", mode);
-    fflush(stdout);
+    //printf("\n\nSet the Home Mode? (1= Home), (2 = Away), (0 = Exit) \nCurrent Mode: %d \\> ", mode);
+    //fflush(stdout);
 }
 
 /* FUNCTION: printstuff
@@ -89,13 +91,13 @@ void askMode()
 void printstuff()
 {
      cout << "Registered: ";
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 6; i++)
         {
              cout << isRegistered[i] << " ";
         }
          cout <<  endl;
          cout << "IP: ";
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 6; i++)
         {
             if (ips[i] != "")
                  cout << ips[i] << " ";
@@ -113,7 +115,7 @@ long long query_state(int device_id)
 {
     long long value = 0;
 
-    if (device_id > 3 || device_id < 0)
+    if (device_id > 5 || device_id < 0)
         return 0;
 
     if (isRegistered[device_id] == 1 && ips[device_id] != "")
@@ -125,7 +127,7 @@ long long query_state(int device_id)
 #ifdef LATENCY
         chrono::duration<double> elapsed_seconds = end - start;
         std::cout << "Latency: " << elapsed_seconds.count() << std::endl;
-#endif		
+#endif        
     }
 
     return value;
@@ -262,14 +264,20 @@ void *UserEntry(void *arg)
         /* User is home */
         if (lmode == HOME)
         {
-            /* Disarm the intruder alert */
-            signal(SIGINT, SIG_DFL);
-            /* Change mode to Home (& Winters) */
-            change_mode(lmode);
+			authenticated = query_state(KEY);
+
+			if (authenticated == true)
+			{
+				/* Disarm the intruder alert */
+				signal(SIGINT, SIG_DFL);
+				/* Change mode to Home (& Winters) */
+				change_mode(lmode);
+			}
         }
         /* User is going on vacation */
         else if (lmode == AWAY)
         {
+			authenticated = false;
             /* Arm the intruder alert */
             prev_handler = signal(SIGINT, text_message);
             /* Change mode to Away (& Spring break) */
@@ -456,13 +464,13 @@ STATUS test_system()
     int device_id;
 
     /* Test device registration */
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 6; i++)
     {
         if (isRegistered[i] == 1)
             count++;
     }
 
-    if (count == 4)
+    if (count == 6)
     {
          cout << "\nAll sensors and devices are registered." <<  endl;
          cout << "\nPerforming System Test...\n" <<  endl;
@@ -475,7 +483,7 @@ STATUS test_system()
         status = FAILURE;
     }
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 6; i++)
     {
          cout << name[i] << ":\t" << ips[i] << "\t" << ports[i] <<  endl;
     }
@@ -483,7 +491,7 @@ STATUS test_system()
     /* Test the query state for heartbeat */
      cout << "\nTesting query_state:" <<  endl;
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 6; i++)
     {
         status_and_id = query_state(i);
         device_id = (int)(status_and_id >> 32);
@@ -536,7 +544,7 @@ STATUS main()
     STATUS status = SUCCESS;
 
     /* New strings for sensor and device IPs */
-    ips = new  string[4];
+    ips = new  string[6];
     void *result_ptr = NULL;
 
     /* pthreads */
@@ -576,7 +584,7 @@ STATUS main()
 #ifdef DEBUG
         cout << "registerf called " <<endl;
 #endif
-        int devid = 6;
+        int devid = -1007;
 
         for (int i = 0; i < 6; i++)
         {
@@ -620,22 +628,56 @@ STATUS main()
     /* Bind the report_state Function */
     srv.bind("report_state", [](int device_id, bool state)
     {
+		void (*prev_handler)(int);
 #ifdef DEBUG
         cout << "Motion Detected: " << device_id << endl;
 #endif
         if (device_id == MOTION)
         {
-            DisableTimer(); /* stop the timer */
+            DisableTimer(); /* Stop the timer */
             motion_lock.unlock(); /* Detect the motion */
         }
         if (device_id == KEY)
         {
-            /* Decisions */
-		}
+            /* User authenticated. Switch to HOME mode */
+            cout << "Auth OK" <<endl;
+            if (mode == AWAY)
+            {
+				/* Disarm the intruder alert */
+				//signal(SIGINT, SIG_DFL);
+                //cout << "HOME MODE" <<endl;
+                //change_mode(HOME);
+                authenticated = true;
+            }
+        }
         if (device_id == DOOR)
         {
-            /* Decisions */
-		}
+            doorstatus = state;
+
+			cout << "Door state = " << doorstatus << endl;
+            
+            /* Door was opened and closed. */
+            if (state == false)
+            {
+                if (mode == HOME)
+                {
+					 /* Arm the intruder alert */
+					prev_handler = signal(SIGINT, text_message);
+                    change_mode(AWAY);
+                    authenticated = false;
+				    cout << "AWAY MODE" <<endl;
+					cout << "Auth Disable" <<endl;
+                }
+	            if (mode == AWAY && authenticated == true)
+                {
+					/* Disarm the intruder alert */
+					signal(SIGINT, SIG_DFL);
+					cout << "HOME MODE" <<endl;
+					change_mode(HOME);
+				}
+
+            }
+        }
     });
 
     /* Run the server loop */
