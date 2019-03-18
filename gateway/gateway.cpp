@@ -628,6 +628,14 @@ STATUS main()
             DisableTimer(); /* stop the timer */
             motion_lock.unlock(); /* Detect the motion */
         }
+        if (device_id == KEY)
+        {
+            /* Decisions */
+		}
+        if (device_id == DOOR)
+        {
+            /* Decisions */
+		}
     });
 
     /* Run the server loop */

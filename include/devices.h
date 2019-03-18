@@ -54,7 +54,7 @@
 #define ERR_DEV_NOT_REGD                -1007
 
 /* Defined by the Gateway */
-#define ERR_SENSOR_NOT_REGISTERED        4
+#define ERR_SENSOR_NOT_REGISTERED        -1008
 
 /* Macros */
 #define HOME                             1 << 0
