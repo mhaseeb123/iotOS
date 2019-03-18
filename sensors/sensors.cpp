@@ -49,6 +49,7 @@ TIMER motion_timer;
 int msensor = ERR_SENSOR_NOT_REGISTERED;
 int tsensor = ERR_SENSOR_NOT_REGISTERED;
 int dsensor = ERR_SENSOR_NOT_REGISTERED;
+int psensor = ERR_SENSOR_NOT_REGISTERED;
 
 /* Locks for thread synchronization */
 LOCK offset_lock;
@@ -115,7 +116,7 @@ void change_mode(int inmode)
 
             /* Winter time, temperature now varies from 0 to 2C */
             modeoffset = 0;
-			
+            
             break;
 
         case AWAY:
@@ -247,9 +248,18 @@ void *door(void *arg)
     cout << "Registering Door Sensor...\n";
     dsensor = client.call("registerf", "sensor", "door", sensor_ip, sensor_port).as<int>();
 
+    cout << "Registering Keyhain...\n";
+    psensor = client.call("registerf", "sensor", "keychain", sensor_ip, sensor_port).as<int>();
+
     if (dsensor == ERR_SENSOR_NOT_REGISTERED)
     {
         cout << "Door Sensor Registration Failed..\n";
+        return NULL;
+    }
+    
+    if (ksensor == ERR_SENSOR_NOT_REGISTERED)
+    {
+        cout << "Keychain Registration Failed..\n";
         return NULL;
     }
 
@@ -262,6 +272,9 @@ void *door(void *arg)
     
         /* Randomly generate door change with 70% probability */
         bool val = (Random_Number() % 100) < 70 ? true : false;
+        
+        /* Send keychain value with 50% probability */
+        bool val2 = (Random_Number() % 100) < 50 ? true : false;
 
         if (val == true)
         {
@@ -274,7 +287,20 @@ void *door(void *arg)
             cout << "Door Opened " << endl;
             
             sleep(0.1);
+
+            /* Check if User is AWAY then 
+               randomize between user and 
+			   intruder
+			*/
+            offset_lock.lock();
             
+            if (mode == AWAY)
+            {
+                client.call("report_state", psensor, val2);
+            }
+
+            offset_lock.unlock();
+
             /* Close the door */
             client.call("report_state", dsensor, false);
             
@@ -322,7 +348,7 @@ long long query_state(int device_id)
 
         /* Report temperature between 0 and 3 */
         res = (res / (float)(RAND_MAX / 3)) + modeoffset;
-		
+        
         /* Scale the temperature readings to integer */
         res *= TEMPSCALE;
 
@@ -336,7 +362,7 @@ long long query_state(int device_id)
     }
     else if (device_id == dsensor)
     {
-        /* If even then motion, else no motion (50 % prob) */
+        /* Return state of door */
         res = door;
     }
     else if (device_id == psensor)

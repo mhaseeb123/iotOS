@@ -28,14 +28,14 @@
 using namespace std;
 
 /* Database of devices and sensors */
- string name[4] = {"temp", "motion", "bulb", "outlet"};
- string type[4] = {"sensor", "sensor", "device", "device"};
+ string name[6] = {"temp", "motion", "door", "keychain", "bulb", "outlet"};
+ string type[6] = {"sensor", "sensor", "sensor", "sensor", "device", "device"};
  string *ips;
-int ports[4] = {0};
+int ports[6] = {0};
 
 /* Global Variables */
 int devs_reg = 0;
-static int isRegistered[4] = {0};
+static int isRegistered[6] = {0};
 
 /* Timer and states */
 TIMER motion_timer;
@@ -62,7 +62,7 @@ void printHeader()
 {
  cout << "\n**********************************\n";
  cout << "*                                *\n";
- cout << "* COP5614:  IoT and Smart Home   *\n";
+ cout << "* COP5614:  A Smarter Home       *\n";
  cout << "* Muhammad Haseeb, Usman Tariq   *\n";
  cout << "*                                *\n";
  cout << "**********************************\n\n";
@@ -187,7 +187,7 @@ int change_state(int device_id, int state)
         ack = cln.call("change_state", device_id, state).as<int>();
 
         if (ack == SUCCESS)
-            states[device_id - 2] = state;
+            states[device_id - 4] = state;
     }
     return ack;
 }
@@ -210,7 +210,7 @@ void TimerExpired()
 #endif
 
    /* Turn the bulb off if on */
-    if (states[BULB-2] == ON)
+    if (states[BULB-4] == ON)
     {
         ack = change_state(BULB, OFF);
     }
@@ -324,7 +324,7 @@ void *HeatManage(void *arg)
             /* Too cold. Turn the outlet ON if OFF */
             if (temperature < 1.0 * TEMPSCALE)
             {
-                if (states[OUTLET-2] == OFF)
+                if (states[OUTLET-4] == OFF)
                 {
                     ack = change_state(OUTLET, ON);
                 }
@@ -332,7 +332,7 @@ void *HeatManage(void *arg)
             /* Not too cold. Turn the outlet OFF if ON */
             if (temperature > 2.0 * TEMPSCALE)
             {
-                if (states[OUTLET-2] == ON)
+                if (states[OUTLET-4] == ON)
                 {
                     ack = change_state(OUTLET, OFF);
                 }
@@ -375,7 +375,7 @@ void *BulbManage(void *arg)
                 {
                     case HOME:
                         /* Turn bulb ON if OFF */
-                        if (states[BULB-2]==OFF)
+                        if (states[BULB-4]==OFF)
                         {
                             ack = change_state(BULB, ON);
                         }
@@ -576,9 +576,9 @@ STATUS main()
 #ifdef DEBUG
         cout << "registerf called " <<endl;
 #endif
-        int devid = 4;
+        int devid = 6;
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 6; i++)
         {
            if (lname.compare(name[i]) == 0)
            {
@@ -603,7 +603,7 @@ STATUS main()
                    devid = i;
                }
            }
-           if (devs_reg == 4)
+           if (devs_reg == 6)
            {
                 /* Let's test the smart home */
         test_lock.unlock();

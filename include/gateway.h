@@ -46,8 +46,10 @@
 
 #define TEMP           0
 #define MOTION         1
-#define BULB           2
-#define OUTLET         3
+#define DOOR           2
+#define KEY            3
+#define BULB           4
+#define OUTLET         5
 
 #define SUCCESS        0
 #define FAILURE        1
