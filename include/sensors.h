@@ -54,10 +54,10 @@
 #define ERR_INVLD_IP                    -1006
 
 /* Defined by the Gateway */
-#define ERR_SENSOR_NOT_REGISTERED        4
+#define ERR_SENSOR_NOT_REGISTERED       -1007
 
 /* Scaling Factor for temperature sensor data */
-#define TEMPSCALE      1000
+#define TEMPSCALE                        1000
 
 /* Macros */
 #define HOME                             1 << 0

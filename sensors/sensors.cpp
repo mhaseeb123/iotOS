@@ -24,8 +24,9 @@
 #include "sensors.h"
 using namespace std;
 
-#define MOTIONTIME    2000
-#define AWAYTIME      5000
+#define MOTIONTIME    1000
+#define AWAYTIME      5000000
+#define DOORTIME      5000
 
 /* Global Variables */
 string gateway_ip;
@@ -36,7 +37,8 @@ string sensor_ip;
 const int sensor_port = 6060;
 
 MODE mode = HOME;
-bool motion = false;
+int motion = MOTIONTIME;
+bool door = false;
 float temp = 0.5;
 float modeoffset = 0;
 
@@ -46,6 +48,7 @@ TIMER motion_timer;
 /* Sensor IDs assigned by Gateway */
 int msensor = ERR_SENSOR_NOT_REGISTERED;
 int tsensor = ERR_SENSOR_NOT_REGISTERED;
+int dsensor = ERR_SENSOR_NOT_REGISTERED;
 
 /* Locks for thread synchronization */
 LOCK offset_lock;
@@ -107,13 +110,16 @@ void change_mode(int inmode)
     switch (inmode)
     {
         case HOME:
+
             mode = HOME;
 
-            /* User is home. Winter time, temperature varies from 0 to 3 C */
+            /* Winter time, temperature now varies from 0 to 2C */
             modeoffset = 0;
+			
             break;
 
         case AWAY:
+
             mode = AWAY;
 
             /* Spring time, temperature now varies from 10 to 13 C instead */
@@ -124,7 +130,9 @@ void change_mode(int inmode)
             break;
 
         case EXIT:
+
             mode = EXIT;
+
             exit(0); // Shutdown
             break;
 
@@ -139,7 +147,7 @@ void change_mode(int inmode)
 /*
  * FUNCTION: Random Number
  * DESCRIPTION: Returns a random number between
- -1.0 and 1.0
+ * -1.0 and 1.0
  *
  * @params: none
  * @returns: random number
@@ -193,7 +201,7 @@ void *report_state(void *arg)
     cout << "Registering Motion Sensor...\n";
     msensor = client.call("registerf", "sensor", "motion", sensor_ip, sensor_port).as<int>();
 
-    if (tsensor == ERR_SENSOR_NOT_REGISTERED)
+    if (msensor == ERR_SENSOR_NOT_REGISTERED)
     {
         cout << "Motion Sensor Registration Failed..\n";
         return NULL;
@@ -207,7 +215,7 @@ void *report_state(void *arg)
         motion_lock.lock();
 
         /* Randomly generate motion/no motion */
-        bool val = (Random_Number() & 0x1) == 0 ? 1.0 : 0.0;
+        bool val = (Random_Number() % 100) < 70 ? true : false;
 
         if (val==true)
         {
@@ -215,6 +223,77 @@ void *report_state(void *arg)
 
             /* Push motion sense data */
             client.call("report_state", msensor, val);
+        }
+    }
+
+    /* No results required */
+    return NULL;
+}
+
+/*
+ * FUNCTION: door
+ * DESCRIPTION: Entry function for Door Sensor Task
+ *
+ * @params: args: pointer to input arguments
+ * @returns: pointer to any results
+ */
+void *door(void *arg)
+{
+    // Creating a client that connects to the localhost on port 8080
+    cout << "\nConnecting to Gateway...\n";
+
+    rpc::client client(gateway_ip, gateway_port);
+
+    cout << "Registering Door Sensor...\n";
+    dsensor = client.call("registerf", "sensor", "door", sensor_ip, sensor_port).as<int>();
+
+    if (dsensor == ERR_SENSOR_NOT_REGISTERED)
+    {
+        cout << "Door Sensor Registration Failed..\n";
+        return NULL;
+    }
+
+    cout << "Door Sensor Active \n";
+
+    while (true)
+    {
+        /* Wait for door */
+        sleep(DOORTIME);
+    
+        /* Randomly generate door change with 70% probability */
+        bool val = (Random_Number() % 100) < 70 ? true : false;
+
+        if (val == true)
+        {
+            /* Check if door state changed */
+            door = val;
+
+            /* Open the door */
+            client.call("report_state", dsensor, val);
+            
+            cout << "Door Opened " << endl;
+            
+            sleep(0.1);
+            
+            /* Close the door */
+            client.call("report_state", dsensor, false);
+            
+            cout << "Door Closed " << endl;
+            
+            door = val;
+            
+            /* Since door was opened and closed */
+            /* Change motion timer settings */
+            if (motion == MOTIONTIME)
+            {
+                motion = AWAYTIME;
+            }
+            else
+            {
+                motion = MOTIONTIME;
+            }
+            
+            (void)SetTimer(motion);
         }
     }
 
@@ -238,9 +317,14 @@ long long query_state(int device_id)
     {
         /* Acquire offset lock */
         offset_lock.lock();
+        /* Mux device_id */
+        cout << "Temperature Reported " << res << endl;
 
         /* Report temperature between 0 and 3 */
         res = (res / (float)(RAND_MAX / 3)) + modeoffset;
+		
+        /* Scale the temperature readings to integer */
+        res *= TEMPSCALE;
 
         /* Release offset lock */
         offset_lock.unlock();
@@ -250,17 +334,24 @@ long long query_state(int device_id)
         /* If even then motion, else no motion (50 % prob) */
         res = (Random_Number() & 0x1) == 0 ? 1 : 0;
     }
+    else if (device_id == dsensor)
+    {
+        /* If even then motion, else no motion (50 % prob) */
+        res = door;
+    }
+    else if (device_id == psensor)
+    {
+        /* Is it intruder? 50 % prob */
+        res = (Random_Number() & 0x1) == 0 ? 1 : 0;
+    }
     else
     {
         /* Set to 0xffffffff */
         res = -1.0;
     }
 
-    /* Mux device_id */
-    cout << "Temperature Reported " << res << endl;
-
     /* Scale the temperature to 1000 */
-    long long query = (long long) (res * TEMPSCALE);
+    long long query = (long long) (res);
     query |= ((long long) device_id << 32);
 
     return query;
@@ -311,6 +402,7 @@ STATUS main(int argc, char **argv)
 
     pthread_t thread1;
     pthread_t thread2;
+    pthread_t thread3;
 
     /* Check if gateway ip and port passed */
     if (argc < 3)
@@ -379,6 +471,18 @@ STATUS main(int argc, char **argv)
         }
     }
 
+    /* Create Tasks (pthreads) */
+    if (status == SUCCESS)
+    {
+        printf("Main Task: Creating DSensor Task\n");
+        status = pthread_create(&thread3, NULL, &door, NULL);
+        if (status != SUCCESS)
+        {
+            printf("Error: DSensor Task Creation Failed\nABORT!!\n\n");
+            status = ERR_THREAD_CREATION_FAILED;
+        }
+    }
+
     if (status == SUCCESS)
     {
         cout << "Main Task: Creating Timers\n\n";
@@ -394,6 +498,7 @@ STATUS main(int argc, char **argv)
     {
         /* If Gateway Not available, then exit */
         pthread_join(thread2, &result_ptr);
+        pthread_join(thread3, &result_ptr);
 
         pthread_cancel(thread1);
 
