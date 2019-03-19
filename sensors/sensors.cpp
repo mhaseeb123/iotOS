@@ -356,7 +356,7 @@ long long query_state(int device_id)
         res = (res / (float)(RAND_MAX / 3)) + modeoffset;
         
         /* Mux device_id */
-        cout << "Temperature Reported " << res << endl;
+        cout << "Temperature Queried " << res << endl;
 
         /* Scale the temperature readings to integer */
         res *= TEMPSCALE;
@@ -368,16 +368,22 @@ long long query_state(int device_id)
     {
         /* If even then motion, else no motion (50 % prob) */
         res = (Random_Number() & 0x1) == 0 ? 1 : 0;
+		/* Mux device_id */
+        cout << "Motion Queried " << res << endl;
     }
     else if (device_id == dsensor)
     {
         /* Return state of door */
         res = door;
+		/* Mux device_id */
+        cout << "Door Queried " << res << endl;
     }
     else if (device_id == psensor)
     {
         /* Is it intruder? 50 % prob */
         res = (Random_Number() & 0x1) == 0 ? 1 : 0;
+		/* Mux device_id */
+        cout << "Keycard Queried " << res << endl;
     }
     else
     {

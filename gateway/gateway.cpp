@@ -264,7 +264,7 @@ void *UserEntry(void *arg)
         /* User is home */
         if (lmode == HOME)
         {
-			authenticated = query_state(KEY);
+			authenticated = (query_state(KEY) & 0xFF);
 
 			if (authenticated == true)
 			{
