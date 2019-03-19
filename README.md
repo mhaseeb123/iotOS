@@ -1,4 +1,4 @@
-# COP5614: Operating System Assignment # 1
+# COP5614: Operating System Assignment # 1 & 2
 ## Authors: Muhammad Haseeb and Usman Tariq
 # Requirements
 1.	cmake, g++ and rpc libary are required to run this project.
