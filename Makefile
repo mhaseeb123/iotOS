@@ -4,8 +4,11 @@ CXX = g++
 
 PROJECT_ROOT = $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-DEPS = include/sensors.h sensors/sensors.cpp include/devices.h devices/devices.cpp gateway/gateway.cpp
+DEPS = include/sensors.h sensors/sensors.cpp include/devices.h devices/devices.cpp \
+	include/gateway.h gateway/gateway.cpp include/dbmanager.h gateway/dbmanager.cpp
+OBJS = gateway.o dbmanager.o
 INCLUDES = $(PROJECT_ROOT)include
+OBJDIR = objects
 LIBS = -lrpc -lpthread
 
 SENSORS_EXE = sensors.exe
@@ -26,13 +29,19 @@ all: sensors.exe gateway.exe devices.exe
 sensors.exe: $(DEPS)
 	$(CXX) $(CXXFLAGS) sensors/sensors.cpp -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $@
 
-gateway.exe: $(DEPS)
-	$(CXX) $(CXXFLAGS) gateway/gateway.cpp -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $@
+gateway.exe: $(DEPS) objdir $(OBJS)
+	$(CXX) $(CXXFLAGS) $(OBJDIR)/*.o -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $@
+
+objdir:
+	mkdir -p $(OBJDIR)
+	
+%.o: $(PROJECT_ROOT)gateway/%.cpp
+	$(CXX) -c $(CXXFLAGS) -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $(OBJDIR)/$@ $<
 
 devices.exe: $(DEPS)
 	$(CXX) $(CXXFLAGS) devices/devices.cpp -I$(INCLUDES) -Wl,--start-group $(LIBS) -Wl,--end-group -o $@
 
 clean:
-	rm -rf $(SENSORS_EXE) $(GATEWAY_EXE) $(DEVICES_EXE)
+	rm -rf $(SENSORS_EXE) $(GATEWAY_EXE) $(DEVICES_EXE) $(OBJDIR)/*.o
 
 .PHONY: all sensors gateway devices

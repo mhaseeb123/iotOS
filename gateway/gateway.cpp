@@ -36,6 +36,7 @@ int ports[6] = {0};
 /* Global Variables */
 int devs_reg = 0;
 static int isRegistered[6] = {0};
+int lead = -1;
 
 /* Timer and states */
 TIMER motion_timer;
@@ -43,6 +44,14 @@ float temperature = 1.0;
 bool doorstatus = false;
 bool authenticated = true;
 int states[2] = {OFF, OFF};
+
+/* Berkeley Offset */
+int offset = 0;
+
+/* Structures for DB */
+vector<string> dbstates;
+vector<string> history;
+
 
 /* Locks for synchronization */
 LOCK motion_lock;
@@ -78,8 +87,8 @@ void printHeader()
  */
 void askMode()
 {
-    //printf("\n\nSet the Home Mode? (1= Home), (2 = Away), (0 = Exit) \nCurrent Mode: %d \\> ", mode);
-    //fflush(stdout);
+    printf("\n\nSet the Home Mode? (1= Home), (2 = Away), (0 = Exit) \nCurrent Mode: %d \\> ", mode);
+    fflush(stdout);
 }
 
 /* FUNCTION: printstuff
@@ -188,9 +197,15 @@ int change_state(int device_id, int state)
         rpc::client cln(ips[device_id], ports[device_id]);
         ack = cln.call("change_state", device_id, state).as<int>();
 
+		/* Log the event into database */
+		long long timeStamp = cln.call("request_timestamp", device_id).as<long long>();
+		setState(device_id, state);
+		logEntry(timeStamp, device_id, state, " ");
+		
         if (ack == SUCCESS)
             states[device_id - 4] = state;
     }
+
     return ack;
 }
 
@@ -221,10 +236,10 @@ void TimerExpired()
     bulb_lock.unlock();
 
     /* Check for acknowledgement */
-  if (ack != SUCCESS)
+    if (ack != SUCCESS)
     {
         cout << "ERROR: change_state for bulb failed with error code:\t" << ack << endl;
-  }
+    }
 }
 
 /* FUNCTION: text_message
@@ -306,7 +321,7 @@ void *HeatManage(void *arg)
 {
     int ack = SUCCESS;
 
-  /* Wait for automation start */
+    /* Wait for automation start */
     start_lock.lock();
     start_lock.unlock();
 
@@ -347,10 +362,10 @@ void *HeatManage(void *arg)
             }
         }
         /* Report if acknowledgement failed */
-    if (ack != SUCCESS)
-    {
+		if (ack != SUCCESS)
+		{
             cout << "ERROR: change_state failed for Outlet with code:\t" << ack << endl;
-    }
+		}
     }
 
     return NULL;
@@ -413,6 +428,60 @@ void *BulbManage(void *arg)
     return NULL;
 }
 
+/* FUNCTION: berkeleyTime
+ * DESCRIPTION: Entry function for berkeley_manage task
+ *
+ * @params: none
+ * @returns: none
+ */
+void *berkeleyTime(void *arg)
+{
+	int num_devs = 6;
+	long long timestamp[num_devs];
+	int response = 0;
+	while (true)
+	{
+		long long avg = 0;
+		for (int device_id = 0; device_id < num_devs; device_id++)
+		{
+			rpc::client cln(ips[device_id], ports[device_id]);
+			//FixMe: return from remote call has device id in the upper 32 bits
+			timestamp[device_id] = cln.call("request_timestamp", device_id).as<long long>();
+			avg += timestamp[device_id];
+		}
+		
+		avg += getLocalTimeStamp();
+		avg /= (num_devs + 1);
+		
+		for (int device_id = 0; device_id < num_devs; device_id++)
+		{
+			int remote_offset = (int)(avg - timestamp[device_id]);
+			rpc::client cln(ips[device_id], ports[device_id]);
+			//FixMe: return is long long.
+			response = (int)(cln.call("set_offset", device_id, remote_offset).as<long long>());
+			if (response != remote_offset)
+				printf("Error: berkeleyTime - device id: %d not set properly.\n", device_id);
+		}
+		printf("Berkeley: Time adjusted to %lld\n", avg);
+		sleep(10); //repeat every 10 seconds.
+	}
+}
+
+/* FUNCTION: getLocalTimeStamp
+ * DESCRIPTION: Get local time im ms adjusted by the berkeley offset
+ *
+ * @params: none
+ * @returns: int local time
+ */
+long long getLocalTimeStamp()
+{
+	auto duration = chrono::system_clock::now().time_since_epoch();
+	long long millis = (long long)(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+	millis += offset;
+	
+	return millis;
+}
+
 /* FUNCTION: change_mode
  * DESCRIPTION: change_mode for sensors and devices
  *
@@ -441,11 +510,12 @@ void change_mode(int lmode)
             DisableTimer(); // Disable motion timer
         }
         else if (lmode == EXIT)
-      {
+        {
             rpc::client cln2(ips[OUTLET], ports[OUTLET]);
             cln2.call("powerdown"); // Powerdown
-      }
+        }
     }
+
     /* Release mode change lock */
     mode_lock.unlock();
 }
@@ -503,7 +573,7 @@ STATUS test_system()
     else
     {
             status = FAILURE;
-       cout << name[i] << " " << type[i] << " didn't respond as expected" <<  endl;
+			cout << name[i] << " " << type[i] << " didn't respond as expected" <<  endl;
         }
     }
 
@@ -532,6 +602,69 @@ STATUS test_system()
     return status;
 }
 
+STATUS lelection()
+{
+	int i;
+	int ack = -1;
+	int myid = GATEWAY;
+
+	cout << "Leader Election in Progress.." << endl;
+	for (i = 0; i < 6; i++)
+	{
+		if (isRegistered[i] == 1 && ips[i] != "")
+		{
+			rpc::client cln(ips[i], ports[i]);
+			ack = cln.call("election", myid).as<int>();
+			if (ack == 0)
+			{
+				break;
+			}
+		}
+	}
+	
+	int lid = myid;
+	
+	if (ack == 0)
+	{
+		lid = i;
+	}
+	else
+	{
+		cout << " I am the leader..." << endl;
+	}
+	
+	for (int j = 0; j < 6; j++)
+	{
+        rpc::client cln(ips[j], ports[j]);
+        (void) cln.call("leader", lid);
+	}
+
+    return SUCCESS;
+}
+
+void leader(int lid)
+{
+	lead = lid;
+}
+
+int election(int id)
+{
+	int myid = GATEWAY;
+	
+	cout << "Leader Election in Progress.." << endl;
+	
+	if (myid > id)
+	{
+		cout << "I am the leader..." << endl;
+		lead = myid;
+		return 0;
+	}
+	else
+	{
+		return 1;
+	}
+}
+
 /*
  * FUNCTION: main
  * DESCRIPTION: Main Function
@@ -551,11 +684,12 @@ STATUS main()
     pthread_t user_task;
     pthread_t bulb_manage;
     pthread_t heat_manage;
+	pthread_t berkeley_manage;
 
     /* Lock the Motion Sensor and Automation */
     motion_lock.lock();
     start_lock.lock();
-  test_lock.lock();
+    test_lock.lock();
 
  /* Print Header */
     printHeader();
@@ -578,6 +712,11 @@ STATUS main()
     cout << "Running Server " <<endl;
 #endif
 
+	/* Bind the leader election calls */
+    srv.bind("lelection", &lelection);
+    srv.bind("election", &election);
+    srv.bind("leader", &leader);
+	
     /* Bind the Register Function */
     srv.bind("registerf", []( string ltype,  string lname,  string IP, int port)
     {
@@ -614,7 +753,7 @@ STATUS main()
            if (devs_reg == 6)
            {
                 /* Let's test the smart home */
-        test_lock.unlock();
+                test_lock.unlock();
 #ifdef DEBUG
                 cout << "Starting Home " <<endl;
 #endif
@@ -678,21 +817,41 @@ STATUS main()
 
             }
         }
+		
+		/* Log the event into database */
+		rpc::client cln(ips[device_id], ports[device_id]);
+		long long timeStamp = cln.call("request_timestamp", device_id).as<long long>();
+		setState(device_id, (int)state);
+		logEntry(timeStamp, device_id, (int)state, " ");
     });
 
     /* Run the server loop */
     srv.async_run(4);
 
  /* Run system test */
+ 
     test_lock.lock();
     status = test_system();
-
-  if (status == SUCCESS)
-  {
-     /* All set. Let's start the Smart Home */
+	test_lock.unlock();
+    if (status == SUCCESS)
+    {
+		/* All set. Let's run the leader election */
+		status = lelection();
+        /* All set. Let's start the Smart Home */
         start_lock.unlock();
-  }
-
+    }
+	
+	/* Create task to synchronize time using berkeley algorithm */
+	if (status == SUCCESS)
+    {
+        status = pthread_create(&berkeley_manage, NULL, &berkeleyTime, NULL);
+		
+		if (status != SUCCESS)
+		{
+			printf("Error: berkeley_manage Task Creation Failed\nABORT!!\n\n");
+		}
+    }
+	
     /* Create User Task */
     if (status == SUCCESS)
     {
@@ -703,7 +862,7 @@ STATUS main()
             printf("Error: Task Creation Failed\nABORT!!\n\n");
            // status = ERR_THREAD_CREATION_FAILED;
         }
-  }
+	}
 
     /* Create Bulb Management Task */
     if (status == SUCCESS)
@@ -735,6 +894,7 @@ STATUS main()
         pthread_join(user_task, &result_ptr);
         pthread_join(bulb_manage, &result_ptr);
         pthread_join(heat_manage, &result_ptr);
+		pthread_join(berkeley_manage, &result_ptr);
 
         pthread_exit(NULL);
     }

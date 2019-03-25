@@ -31,6 +31,7 @@ using namespace std;
 /* Global Variables */
 string gateway_ip;
 int gateway_port;
+int lead = -1;
 
 /* Store the device ip and port */
 string sensor_ip;
@@ -46,6 +47,9 @@ bool bari = false;
 /* Timer for motion updates */
 TIMER motion_timer;
 
+/* Berkeley Offset */
+int offset = 0;
+
 /* Sensor IDs assigned by Gateway */
 int msensor = ERR_SENSOR_NOT_REGISTERED;
 int tsensor = ERR_SENSOR_NOT_REGISTERED;
@@ -55,6 +59,7 @@ int psensor = ERR_SENSOR_NOT_REGISTERED;
 /* Locks for thread synchronization */
 LOCK offset_lock;
 LOCK motion_lock;
+
 
 /* FUNCTION: getIPAddress
  * DESCRIPTION: Returns my IP.
@@ -398,10 +403,91 @@ long long query_state(int device_id)
     return query;
 }
 
+/* FUNCTION: request_timestamp
+ * DESCRIPTION: Function for server to request timestamp
+ *
+ * @params: device id
+ * @returns: device_id and timestamp
+ */
+long long request_timestamp(int device_id) 
+{
+	long long res = 0;
+	if (device_id == msensor || device_id == tsensor || device_id == dsensor || device_id == psensor)
+	{
+		res = getLocalTimeStamp();
+	}
+	
+	return res;
+}
+
+/* FUNCTION: set_offset
+ * DESCRIPTION: Receive the correction factor from server to adjust the timestamp
+ *
+ * @params: device id
+ * @returns: device_id and offset
+ */
+long long set_offset(int device_id, int l_offset)
+{
+	if (device_id == msensor || device_id == tsensor || device_id == dsensor || device_id == psensor)
+	{
+		printf("Offset received %d\n", l_offset);
+		offset = l_offset;
+	}
+	
+	long long ret_offset = (long long) l_offset;
+	ret_offset |= ((long long) device_id << 32);
+	
+	return ret_offset;
+}
+
+/* FUNCTION: getLocalTimeStamp
+ * DESCRIPTION: Get local time im ms adjusted by the berkeley offset
+ *
+ * @params: none
+ * @returns: int local time
+ */
+long long getLocalTimeStamp()
+{
+	auto duration = chrono::system_clock::now().time_since_epoch();
+	long long millis = (long long)(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+	millis += offset;
+	
+	return millis;
+}
+
 void Update()
 {
     /* Release the motion mutex here */
     motion_lock.unlock();
+}
+
+void leader(int lid)
+{
+	lead = lid;
+}
+
+int election(int id)
+{
+	cout << "Leader Election in Progress.." << endl;
+	int myid = tsensor;
+	
+	if (myid < dsensor)
+		myid = dsensor;
+	if (myid < msensor)
+		myid = msensor;
+	if (myid < psensor)
+		myid = psensor;
+
+	if (myid > id)
+	{
+		lead = myid;
+		cout << "I am the leader..." << endl;
+		return 0;
+	}
+	else
+	{
+		return 1;
+	}
 }
 
 /*
@@ -421,6 +507,11 @@ void *Server_Entry(void *arg)
 
     srv.bind("query_state", &query_state);
     srv.bind("change_mode", &change_mode);
+    srv.bind("election", &election);
+    srv.bind("leader", &leader);
+	srv.bind("request_timestamp", &request_timestamp);
+	srv.bind("set_offset", &set_offset);
+	
 
     /* Run the server loop. */
     srv.run();

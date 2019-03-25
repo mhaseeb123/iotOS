@@ -66,7 +66,7 @@
 
 /* Typedefs */
 typedef int STATUS;
-typedef unsigned int MODE;
+typedef unsigned int MODE; 
 typedef struct itimerval TIMER;
 typedef std::mutex LOCK;
 
@@ -77,6 +77,9 @@ int Random_Number();
 void change_mode(int inmode);
 std::string getIPAddress();
 long long query_state(int device_id);
+long long request_timestamp(int device_id);
+long long set_offset(int device_id, int l_offset);
+long long getLocalTimeStamp();
 void Update();
 void *Server_Entry(void *arg);
 

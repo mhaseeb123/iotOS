@@ -26,6 +26,7 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <vector>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -43,6 +44,7 @@
 #include <dirent.h>
 #include "rpc/server.h"
 #include "rpc/client.h"
+#include "dbmanager.h"
 
 #define TEMP           0
 #define MOTION         1
@@ -50,6 +52,8 @@
 #define KEY            3
 #define BULB           4
 #define OUTLET         5
+#define DATABASE       6
+#define GATEWAY        10
 
 #define SUCCESS        0
 #define FAILURE        1
@@ -62,7 +66,7 @@
 
 typedef int STATUS;
 typedef unsigned int MODE;
-typedef struct itimerval TIMER;
+typedef struct itimerval TIMER; 
 typedef std::mutex LOCK;
 
 #define HOME           1 << 0
@@ -85,6 +89,8 @@ void *UserEntry(void *arg);
 void *HeatManage(void *arg);
 void *BulbManage(void *arg);
 void change_mode(int lmode);
+void *berkeleyTime(void *arg);
+long long getLocalTimeStamp();
 STATUS test_system();
 STATUS main();
 

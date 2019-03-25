@@ -64,12 +64,15 @@
 /* Typedefs */
 typedef int STATUS;
 typedef unsigned int MODE;
-typedef struct itimerval TIMER;
+typedef struct itimerval TIMER; 
 typedef std::mutex LOCK;
 
 /* Function Prototypes */
 std::string getIPAddress();
 long long query_state(int device_id);
 STATUS change_state(int device_id, int new_state);
+long long request_timestamp(int device_id);
+long long set_offset(int device_id, int l_offset);
+long long getLocalTimeStamp();
 
 #endif /* SENSORS_H_ */

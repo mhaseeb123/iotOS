@@ -27,6 +27,7 @@ using namespace std;
 /* Global Variables */
 string gateway_ip;
 int gateway_port;
+int lead = -1;
 
 /* Store the device ip and port */
 string devices_ip;
@@ -40,10 +41,14 @@ bool outlet = false;
 int bulbid = ERR_SENSOR_NOT_REGISTERED;
 int outletid = ERR_SENSOR_NOT_REGISTERED;
 
+/* Berkeley Offset */
+int offset = 0;
+
 /* Mutex locks for synchronization */
 LOCK bulb_lock;
 LOCK outlet_lock;
 LOCK mode_lock;
+
 
 /* FUNCTION: getIPAddress
  * DESCRIPTION: Returns my IP.
@@ -124,6 +129,58 @@ long long query_state(int device_id)
     return query;
 }
 
+/* FUNCTION: request_timestamp
+ * DESCRIPTION: Function for server to request timestamp
+ *
+ * @params: device id
+ * @returns: device_id and timestamp
+ */
+long long request_timestamp(int device_id)
+{ 
+	long long res = 0;
+	if (device_id == bulbid || device_id == outletid)
+	{
+		res = getLocalTimeStamp();
+	}
+	
+	return res;
+}
+
+/* FUNCTION: set_offset
+ * DESCRIPTION: Receive the correction factor from server to adjust the timestamp
+ *
+ * @params: device id
+ * @returns: device_id and offset
+ */
+long long set_offset(int device_id, int l_offset)
+{
+	if (device_id == bulbid || device_id == outletid)
+	{
+		printf("Offset received %d\n", l_offset);
+		offset = l_offset;
+	}
+	
+	long long ret_offset = (long long) l_offset;
+	ret_offset |= ((long long) device_id << 32);
+	
+	return ret_offset;
+}
+
+/* FUNCTION: getLocalTimeStamp
+ * DESCRIPTION: Get local time im ms adjusted by the berkeley offset
+ *
+ * @params: none
+ * @returns: int local time
+ */
+long long getLocalTimeStamp()
+{
+	auto duration = chrono::system_clock::now().time_since_epoch();
+	long long millis = (long long)(std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+	millis += offset;
+	
+	return millis;
+}
+
 /*
  * FUNCTION: powerdown
  * DESCRIPTION: System` powerdown
@@ -173,6 +230,46 @@ STATUS change_state(int device_id, int new_state)
     return status;
 }
 
+/* FUNCTION: leader
+ * DESCRIPTION: Choose the leader
+ *
+ * @params: none
+ * @returns: id of leader
+ */
+void leader(int lid)
+{
+	lead = lid;
+}
+
+/* FUNCTION: election
+ * DESCRIPTION: Bully Algorithm for leader election
+ *
+ * @params: none
+ * @returns: status of leader election
+ */
+int election(int id)
+{
+	cout << "Leader Election in Progress.." << endl;
+	
+	int myid = bulbid;
+
+	if (myid < outletid)
+	{
+		myid = outletid;
+	}
+
+	if (myid > id)
+	{
+		cout << "I am the leader..." << endl;
+		lead = myid;
+		return 0;
+	}
+	else
+	{
+		return 1;
+	}
+}
+
 /*
  * FUNCTION: ServerEntry
  * DESCRIPTION: Entry function for Server Task
@@ -191,6 +288,10 @@ void *ServerEntry(void *arg)
     srv.bind("query_state", &query_state);
     srv.bind("change_state", &change_state);
     srv.bind("powerdown", &powerdown);
+    srv.bind("election", &election);
+    srv.bind("leader", &leader);
+	srv.bind("request_timestamp", &request_timestamp);
+	srv.bind("set_offset", &set_offset);
 
     /* Run the server loop with 2 threads */
     srv.async_run(2);
