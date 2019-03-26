@@ -44,6 +44,9 @@ int outletid = ERR_SENSOR_NOT_REGISTERED;
 /* Berkeley Offset */
 int offset = 0;
 
+/* Lamport Time (Atomic Counter) */
+atomic<int> lamport;
+
 /* Mutex locks for synchronization */
 LOCK bulb_lock;
 LOCK outlet_lock;
@@ -99,10 +102,14 @@ string getIPAddress()
  * @params: device id
  * @returns: device_id and state
  */
-long long query_state(int device_id)
+long long query_state(int device_id, int r_lamport)
 {
     int res = -1;
 
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+		
     /* Check the device id */
     if (device_id == bulbid)
     {
@@ -135,8 +142,12 @@ long long query_state(int device_id)
  * @params: device id
  * @returns: device_id and timestamp
  */
-long long request_timestamp(int device_id)
-{ 
+long long request_timestamp(int device_id, int r_lamport)
+{
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+
 	long long res = 0;
 	if (device_id == bulbid || device_id == outletid)
 	{
@@ -152,8 +163,12 @@ long long request_timestamp(int device_id)
  * @params: device id
  * @returns: device_id and offset
  */
-long long set_offset(int device_id, int l_offset)
+long long set_offset(int device_id, int l_offset, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
 	if (device_id == bulbid || device_id == outletid)
 	{
 		printf("Offset received %d\n", l_offset);
@@ -165,6 +180,17 @@ long long set_offset(int device_id, int l_offset)
 	
 	return ret_offset;
 }
+
+/* FUNCTION: request_lamport
+ * DESCRIPTION: Returns lamport time variable to remote requests.
+ *
+ * @params: none
+ * @returns: int local time
+ */
+ int request_lamport()
+ {
+	 return lamport;
+ }
 
 /* FUNCTION: getLocalTimeStamp
  * DESCRIPTION: Get local time im ms adjusted by the berkeley offset
@@ -188,9 +214,13 @@ long long getLocalTimeStamp()
  * @params: none
  * @returns: none
  */
-void powerdown()
+void powerdown(int r_lamport)
 {
-    /* Unlock the powerdown mutex */
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+    
+	/* Unlock the powerdown mutex */
     mode_lock.unlock();
     return;
 }
@@ -202,11 +232,15 @@ void powerdown()
  * @params: device id and updated state
  * @returns: acknowledgement
  */
-STATUS change_state(int device_id, int new_state)
+STATUS change_state(int device_id, int new_state, int r_lamport)
 {
     STATUS status = SUCCESS;
 
-    /* Check the device ID */
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+    
+	/* Check the device ID */
     if (device_id == bulbid)
     {
         cout << "Changing State for Smart Bulb to: " << new_state << endl;
@@ -236,8 +270,12 @@ STATUS change_state(int device_id, int new_state)
  * @params: none
  * @returns: id of leader
  */
-void leader(int lid)
+void leader(int lid, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
 	lead = lid;
 }
 
@@ -247,8 +285,12 @@ void leader(int lid)
  * @params: none
  * @returns: status of leader election
  */
-int election(int id)
+int election(int id, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+		
 	cout << "Leader Election in Progress.." << endl;
 	
 	int myid = bulbid;
@@ -292,6 +334,7 @@ void *ServerEntry(void *arg)
     srv.bind("leader", &leader);
 	srv.bind("request_timestamp", &request_timestamp);
 	srv.bind("set_offset", &set_offset);
+	srv.bind("request_lamport", &request_lamport);
 
     /* Run the server loop with 2 threads */
     srv.async_run(2);
@@ -367,7 +410,7 @@ STATUS main(int argc, char **argv)
 
         cout << "Registering Smart Bulb...\n";
 
-        bulbid = client.call("registerf", "device", "bulb", devices_ip, devices_port).as<int>();
+        bulbid = client.call("registerf", "device", "bulb", devices_ip, devices_port, lamport++).as<int>();
 
         if (bulbid == ERR_SENSOR_NOT_REGISTERED)
         {
@@ -381,7 +424,7 @@ STATUS main(int argc, char **argv)
             
             cout << "SUCCESS \n";
             
-            outletid = client.call("registerf", "device", "outlet", devices_ip, devices_port).as<int>();
+            outletid = client.call("registerf", "device", "outlet", devices_ip, devices_port, lamport++).as<int>();
 
             if (outletid == ERR_SENSOR_NOT_REGISTERED)
             {

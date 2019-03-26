@@ -213,7 +213,7 @@ string* getHistory(int count)
 	return history;
 }
 
-void logEntry(long long timeStamp, int device_id, int value, string comment)
+void logEntry(long long timeStamp, int lamport, int device_id, int value, string comment)
 {
 	if (device_id > 5 || device_id < 0)
 		return;
@@ -279,6 +279,7 @@ void logEntry(long long timeStamp, int device_id, int value, string comment)
 	
 	vector<string> temp_history;
 	temp_history.push_back(to_string(timeStamp));
+	temp_history.push_back(to_string(lamport));
 	temp_history.push_back(localsendev);
 	temp_history.push_back(localvalue);
 	temp_history.push_back(comment);

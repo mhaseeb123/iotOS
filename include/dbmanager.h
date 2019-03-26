@@ -50,7 +50,7 @@ void setState(int device_id, int value);
 
 string* getHistory(int count);
 
-void logEntry(long long timeStamp, int device_id, int value, string comment);
+void logEntry(long long timeStamp, int lamport, int device_id, int value, string comment);
 void log(vector<string> history);
 
 #endif /* DBMANAGER_H_ */

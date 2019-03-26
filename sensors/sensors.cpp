@@ -50,6 +50,9 @@ TIMER motion_timer;
 /* Berkeley Offset */
 int offset = 0;
 
+/* Lamport Time (Atomic Counter) */
+atomic<int> lamport;
+
 /* Sensor IDs assigned by Gateway */
 int msensor = ERR_SENSOR_NOT_REGISTERED;
 int tsensor = ERR_SENSOR_NOT_REGISTERED;
@@ -109,8 +112,12 @@ string getIPAddress()
  * @params: new mode
  * @returns: none
  */
-void change_mode(int inmode)
+void change_mode(int inmode, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
     /* Acquire mode update lock */
     offset_lock.lock();
 	
@@ -210,10 +217,10 @@ void *report_state(void *arg)
     rpc::client client(gateway_ip, gateway_port);
 
     cout << "Registering Temperature Sensor...\n";
-    tsensor = client.call("registerf", "sensor", "temp", sensor_ip, sensor_port).as<int>();
+    tsensor = client.call("registerf", "sensor", "temp", sensor_ip, sensor_port, lamport++).as<int>();
 
     cout << "Registering Motion Sensor...\n";
-    msensor = client.call("registerf", "sensor", "motion", sensor_ip, sensor_port).as<int>();
+    msensor = client.call("registerf", "sensor", "motion", sensor_ip, sensor_port, lamport++).as<int>();
 
     if (msensor == ERR_SENSOR_NOT_REGISTERED)
     {
@@ -236,7 +243,7 @@ void *report_state(void *arg)
             cout << "Motion Detected " << endl;
 
             /* Push motion sense data */
-            client.call("report_state", msensor, val);
+            client.call("report_state", msensor, val, lamport++);
         }
     }
 
@@ -259,10 +266,10 @@ void *doorf(void *arg)
     rpc::client client(gateway_ip, gateway_port);
 
     cout << "Registering Door Sensor...\n";
-    dsensor = client.call("registerf", "sensor", "door", sensor_ip, sensor_port).as<int>();
+    dsensor = client.call("registerf", "sensor", "door", sensor_ip, sensor_port, lamport++).as<int>();
 
     cout << "Registering Keyhain...\n";
-    psensor = client.call("registerf", "sensor", "keychain", sensor_ip, sensor_port).as<int>();
+    psensor = client.call("registerf", "sensor", "keychain", sensor_ip, sensor_port, lamport++).as<int>();
 
     if (dsensor == ERR_SENSOR_NOT_REGISTERED)
     {
@@ -312,7 +319,7 @@ void *doorf(void *arg)
 				{
 					cout << "Keychain Reported " << endl;
 			
-					client.call("report_state", psensor, val2);
+					client.call("report_state", psensor, val2, lamport++);
 				}  
 			}
 			
@@ -321,12 +328,12 @@ void *doorf(void *arg)
             cout << "Door Opened " << endl;
 
             /* Open the door */
-            client.call("report_state", dsensor, val);
+            client.call("report_state", dsensor, val, lamport++);
             
 			sleep(1);
 
             /* Close the door */
-            client.call("report_state", dsensor, false);
+            client.call("report_state", dsensor, false, lamport++);
             
             cout << "Door Closed " << endl;
             
@@ -346,8 +353,12 @@ void *doorf(void *arg)
  * @params: device id
  * @returns: device_id and state
  */
-long long query_state(int device_id)
+long long query_state(int device_id, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
     /* Random number for temperature of motion */
     float res = (float) Random_Number();
 
@@ -409,8 +420,12 @@ long long query_state(int device_id)
  * @params: device id
  * @returns: device_id and timestamp
  */
-long long request_timestamp(int device_id) 
+long long request_timestamp(int device_id, int r_lamport) 
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
 	long long res = 0;
 	if (device_id == msensor || device_id == tsensor || device_id == dsensor || device_id == psensor)
 	{
@@ -426,8 +441,12 @@ long long request_timestamp(int device_id)
  * @params: device id
  * @returns: device_id and offset
  */
-long long set_offset(int device_id, int l_offset)
+long long set_offset(int device_id, int l_offset, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
 	if (device_id == msensor || device_id == tsensor || device_id == dsensor || device_id == psensor)
 	{
 		printf("Offset received %d\n", l_offset);
@@ -439,6 +458,17 @@ long long set_offset(int device_id, int l_offset)
 	
 	return ret_offset;
 }
+
+/* FUNCTION: request_lamport
+ * DESCRIPTION: Returns lamport time variable to remote requests.
+ *
+ * @params: none
+ * @returns: int local time
+ */
+ int request_lamport()
+ {
+	 return lamport;
+ }
 
 /* FUNCTION: getLocalTimeStamp
  * DESCRIPTION: Get local time im ms adjusted by the berkeley offset
@@ -461,13 +491,21 @@ void Update()
     motion_lock.unlock();
 }
 
-void leader(int lid)
+void leader(int lid, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
 	lead = lid;
 }
 
-int election(int id)
+int election(int id, int r_lamport)
 {
+	/* Adjust Lamport's Logical Clock */
+	if (lamport++ <= r_lamport)
+		lamport = r_lamport + 1;
+	
 	cout << "Leader Election in Progress.." << endl;
 	int myid = tsensor;
 	
@@ -511,6 +549,7 @@ void *Server_Entry(void *arg)
     srv.bind("leader", &leader);
 	srv.bind("request_timestamp", &request_timestamp);
 	srv.bind("set_offset", &set_offset);
+	srv.bind("request_lamport", &request_lamport);
 	
 
     /* Run the server loop. */

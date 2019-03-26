@@ -48,6 +48,9 @@ int states[2] = {OFF, OFF};
 /* Berkeley Offset */
 int offset = 0;
 
+/* Lamport Time (Atomic Counter) */
+atomic<int> lamport;
+
 /* Structures for DB */
 vector<string> dbstates;
 vector<string> history;
@@ -131,7 +134,7 @@ long long query_state(int device_id)
     {
         rpc::client cln(ips[device_id], ports[device_id]);
         auto start   = chrono::system_clock::now();
-        value = cln.call("query_state", device_id).as<long long>();
+        value = cln.call("query_state", device_id, lamport++).as<long long>();
         auto end   = chrono::system_clock::now();
 #ifdef LATENCY
         chrono::duration<double> elapsed_seconds = end - start;
@@ -195,12 +198,15 @@ int change_state(int device_id, int state)
     if (isRegistered[device_id] == 1 && ips[device_id] != "")
     {
         rpc::client cln(ips[device_id], ports[device_id]);
-        ack = cln.call("change_state", device_id, state).as<int>();
+        ack = cln.call("change_state", device_id, state, lamport++).as<int>();
 
 		/* Log the event into database */
-		long long timeStamp = cln.call("request_timestamp", device_id).as<long long>();
+		long long timeStamp = cln.call("request_timestamp", device_id, lamport++).as<long long>();
+		int l_lamport = cln.call("request_lamport").as<int>();
+		if (lamport++ <= l_lamport)
+			lamport = l_lamport + 1;
 		setState(device_id, state);
-		logEntry(timeStamp, device_id, state, " ");
+		logEntry(timeStamp, lamport, device_id, state, " ");
 		
         if (ack == SUCCESS)
             states[device_id - 4] = state;
@@ -446,7 +452,7 @@ void *berkeleyTime(void *arg)
 		{
 			rpc::client cln(ips[device_id], ports[device_id]);
 			//FixMe: return from remote call has device id in the upper 32 bits
-			timestamp[device_id] = cln.call("request_timestamp", device_id).as<long long>();
+			timestamp[device_id] = cln.call("request_timestamp", device_id, lamport++).as<long long>();
 			avg += timestamp[device_id];
 		}
 		
@@ -458,7 +464,7 @@ void *berkeleyTime(void *arg)
 			int remote_offset = (int)(avg - timestamp[device_id]);
 			rpc::client cln(ips[device_id], ports[device_id]);
 			//FixMe: return is long long.
-			response = (int)(cln.call("set_offset", device_id, remote_offset).as<long long>());
+			response = (int)(cln.call("set_offset", device_id, remote_offset, lamport++).as<long long>());
 			if (response != remote_offset)
 				printf("Error: berkeleyTime - device id: %d not set properly.\n", device_id);
 		}
@@ -497,7 +503,7 @@ void change_mode(int lmode)
     {
         mode = lmode;
         rpc::client cln(ips[MOTION], ports[MOTION]);
-        cln.async_call("change_mode", lmode); // Change mode on sensors
+        cln.async_call("change_mode", lmode, lamport++); // Change mode on sensors
 
         if (lmode == HOME)
         {
@@ -512,7 +518,7 @@ void change_mode(int lmode)
         else if (lmode == EXIT)
         {
             rpc::client cln2(ips[OUTLET], ports[OUTLET]);
-            cln2.call("powerdown"); // Powerdown
+            cln2.call("powerdown", lamport++); // Powerdown
         }
     }
 
@@ -614,7 +620,7 @@ STATUS lelection()
 		if (isRegistered[i] == 1 && ips[i] != "")
 		{
 			rpc::client cln(ips[i], ports[i]);
-			ack = cln.call("election", myid).as<int>();
+			ack = cln.call("election", myid, lamport++).as<int>();
 			if (ack == 0)
 			{
 				break;
@@ -636,7 +642,7 @@ STATUS lelection()
 	for (int j = 0; j < 6; j++)
 	{
         rpc::client cln(ips[j], ports[j]);
-        (void) cln.call("leader", lid);
+        (void) cln.call("leader", lid, lamport++);
 	}
 
     return SUCCESS;
@@ -718,11 +724,15 @@ STATUS main()
     srv.bind("leader", &leader);
 	
     /* Bind the Register Function */
-    srv.bind("registerf", []( string ltype,  string lname,  string IP, int port)
+    srv.bind("registerf", []( string ltype,  string lname,  string IP, int port, int r_lamport)
     {
 #ifdef DEBUG
         cout << "registerf called " <<endl;
 #endif
+		/* Adjust Lamport's Logical Clock */
+		if (lamport++ <= r_lamport)
+			lamport = r_lamport + 1;
+		
         int devid = -1007;
 
         for (int i = 0; i < 6; i++)
@@ -765,12 +775,16 @@ STATUS main()
     });
 
     /* Bind the report_state Function */
-    srv.bind("report_state", [](int device_id, bool state)
+    srv.bind("report_state", [](int device_id, bool state, int r_lamport)
     {
 		void (*prev_handler)(int);
 #ifdef DEBUG
         cout << "Motion Detected: " << device_id << endl;
 #endif
+		/* Adjust Lamport's Logical Clock */
+		if (lamport++ <= r_lamport)
+			lamport = r_lamport + 1;
+		
         if (device_id == MOTION)
         {
             DisableTimer(); /* Stop the timer */
@@ -820,9 +834,12 @@ STATUS main()
 		
 		/* Log the event into database */
 		rpc::client cln(ips[device_id], ports[device_id]);
-		long long timeStamp = cln.call("request_timestamp", device_id).as<long long>();
+		long long timeStamp = cln.call("request_timestamp", device_id, lamport++).as<long long>();
+		int l_lamport = cln.call("request_lamport").as<int>();
+		if (lamport++ <= l_lamport)
+			lamport = l_lamport + 1;
 		setState(device_id, (int)state);
-		logEntry(timeStamp, device_id, (int)state, " ");
+		logEntry(timeStamp, lamport, device_id, (int)state, " ");
     });
 
     /* Run the server loop */
